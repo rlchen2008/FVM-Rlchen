@@ -1,0 +1,222 @@
+57,58c57,59
+<   char              fileName[2048];
+< 
+---
+>   char              filename1[2048], fileName[2048];
+>   PetscBool         set = PETSC_FALSE;
+>   PetscInt          steps_output;
+81,82c82,93
+<   if (user->TimeIntegralMethod == EXPLICITMETHOD) { // explicit method
+<     if(user->myownexplicitmethod){// Using the fully explicit method based on my own routing
+---
+>   if(user->output_solution){
+>   // the output file options
+>     ierr = PetscOptionsBegin(PETSC_COMM_WORLD,0,"Options for output solution",0);CHKERRQ(ierr);
+>     ierr = PetscOptionsString("-solutionfile", "solution file", "AeroSim.c", filename1,filename1, 2048, &set);CHKERRQ(ierr);
+>     if(!set){SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_NULL,"please use option -solutionfile to specify solution file name \n");}
+>     ierr = PetscOptionsInt("-steps_output", "the number of time steps between two outputs", "", steps_output, &steps_output, &set);CHKERRQ(ierr);
+>     if(!set){ steps_output = 1;}
+>     ierr = PetscOptionsEnd();CHKERRQ(ierr);
+>   }
+> 
+>   if (user->TimeIntegralMethod == EXPLICITMETHOD) {
+>     if(user->myownexplicitmethod){
+88d98
+<       ierr = VecSet(algebra->solution, 0);CHKERRQ(ierr);
+92c102
+<       if(user->Explicit_RK2||user->Explicit_RK4){
+---
+>       if(user->Explicit_RK2){
+99d108
+< 
+101d109
+<         ierr = FormTimeStepFunction(user, algebra, algebra->solution, algebra->fn);CHKERRQ(ierr);
+102a111,122
+>         ierr = FormTimeStepFunction(user, algebra, algebra->solution, algebra->fn);CHKERRQ(ierr);
+>         PetscReal fnnorm;
+>         ierr = VecNorm(algebra->fn,NORM_INFINITY,&fnnorm);CHKERRQ(ierr);
+>         if(0){
+>           PetscViewer    viewer;
+>           ierr = OutputVTK(user->dm, "function.vtk", &viewer);CHKERRQ(ierr);
+>           ierr = VecView(algebra->fn, viewer);CHKERRQ(ierr);
+>           ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+>           ierr = PetscPrintf(PETSC_COMM_WORLD,"Step %D at time %g with founction norm = %g \n",
+>                                 user->current_step, user->current_time, fnnorm);CHKERRQ(ierr);
+>           //break;
+>         }
+104,183c124,129
+<         /*
+<           U^n_1   = U^n + 0.5*dt*f(U^n)
+<           U^{n+1} = U^n + dt*f(U^n_1)
+<         */
+<           ierr = VecCopy(algebra->solution, algebra->oldsolution);CHKERRQ(ierr);
+<           //note that algebra->oldsolution and algebra->solution are both U^n
+<           ierr = VecAXPY(algebra->solution, 0.5*user->dt, algebra->fn);CHKERRQ(ierr);
+<           //U^n_1 = U^n + 0.5*dt*f(U^n), now algebra->solution is U^n_1, and algebra->fn is f(U^n)
+< 
+<           ierr = FormTimeStepFunction(user, algebra, algebra->solution, algebra->fn);CHKERRQ(ierr);
+<           //algebra->fn is f(U^n_1)
+< 
+<           // reset the algebra->solution to U^n
+<           ierr = VecCopy(algebra->oldsolution, algebra->solution);CHKERRQ(ierr);
+<           ierr = VecAXPY(algebra->solution, user->dt, algebra->fn);CHKERRQ(ierr);
+<           // now algebra->solution is U^{n+1} = U^n + dt*f(U^n_1)
+<         }else if(user->Explicit_RK4){
+<         /* refer to https://en.wikipedia.org/wiki/Runge%E2%80%93Kutta_methods
+<           k_1     = f(U^n)
+<           U^n_1   = U^n + 0.5*dt*k_1
+<           k_2     = f(U^n_1)
+<           U^n_2   = U^n + 0.5*dt*k_2
+<           k_3     = f(U^n_2)
+<           U^n_3   = U^n + 0.5*dt*k_3
+<           k_4     = f(U^n_3)
+< 
+<           U^{n+1} = U^n + dt/6*(k_1 + 2*k_2 + 2*k_3 + k_4)
+<         */
+<           Vec  VecTemp; // store the U^n_1
+<           Vec  k1, k2, k3, k4;
+< 
+<           ierr = VecDuplicate(algebra->solution, &k1);CHKERRQ(ierr);
+<           ierr = VecDuplicate(algebra->solution, &k2);CHKERRQ(ierr);
+<           ierr = VecDuplicate(algebra->solution, &k3);CHKERRQ(ierr);
+<           ierr = VecDuplicate(algebra->solution, &k4);CHKERRQ(ierr);
+<           ierr = VecCopy(algebra->solution, algebra->oldsolution);CHKERRQ(ierr);
+< 
+<           ierr = VecCopy(algebra->fn, k1);CHKERRQ(ierr);
+<           //note that algebra->oldsolution and algebra->solution are both U^n
+<           ierr = VecAXPY(algebra->solution, 0.5*user->dt, k1);CHKERRQ(ierr);
+<           //U^n_1 = U^n + 0.5*dt*k1, now algebra->solution is U^n_1, and algebra->fn is f(U^n)
+< 
+<           ierr = FormTimeStepFunction(user, algebra, algebra->solution, algebra->fn);CHKERRQ(ierr);
+<           //algebra->fn is f(U^n_1)
+<           ierr = VecCopy(algebra->fn, k2);CHKERRQ(ierr);
+<           // reset the algebra->solution to U^n
+<           ierr = VecCopy(algebra->oldsolution, algebra->solution);CHKERRQ(ierr);
+<           ierr = VecAXPY(algebra->solution, 0.5*user->dt, k2);CHKERRQ(ierr);
+<           //U^n_2 = U^n + 0.5*dt*k2, now algebra->solution is U^n_2, and algebra->fn is f(U^n_1)
+< 
+<           ierr = FormTimeStepFunction(user, algebra, algebra->solution, algebra->fn);CHKERRQ(ierr);
+<           //algebra->fn is f(U^n_2)
+<           ierr = VecCopy(algebra->fn, k3);CHKERRQ(ierr);
+<           // reset the algebra->solution to U^n
+<           ierr = VecCopy(algebra->oldsolution, algebra->solution);CHKERRQ(ierr);
+<           ierr = VecAXPY(algebra->solution, 0.5*user->dt, k3);CHKERRQ(ierr);
+<           //U^n_3 = U^n + 0.5*dt*k3, now algebra->solution is U^n_3, and algebra->fn is f(U^n_2)
+< 
+<           ierr = FormTimeStepFunction(user, algebra, algebra->solution, algebra->fn);CHKERRQ(ierr);
+<           //algebra->fn is f(U^n_3)
+<           ierr = VecCopy(algebra->fn, k4);CHKERRQ(ierr);
+< 
+<           //U^{n+1} = U^n + dt/6*(k_1 + 2*k_2 + 2*k_3 + k_4)
+<           PetscReal temp;
+<           temp = user->dt/6;
+<           // reset the algebra->solution to U^n
+<           ierr = VecCopy(algebra->oldsolution, algebra->solution);CHKERRQ(ierr);
+<           ierr = VecAXPY(algebra->solution, temp, k1);CHKERRQ(ierr);
+<           // now algebra->solution is U^n + dt/6*k_1
+<           ierr = VecAXPY(algebra->solution, 2*temp, k2);CHKERRQ(ierr);
+<           // now algebra->solution is U^n + dt/6*k_1 + 2*dt/6*k_2
+<           ierr = VecAXPY(algebra->solution, 2*temp, k3);CHKERRQ(ierr);
+<           // now algebra->solution is U^n + dt/6*k_1 + 2*dt/6*k_2 + 2*dt/6*k_3
+<           ierr = VecAXPY(algebra->solution, temp, k4);CHKERRQ(ierr);
+<           // now algebra->solution is U^n + dt/6*k_1 + 2*dt/6*k_2 + 2*dt/6*k_3 + dt/6*k_4
+< 
+<           ierr = VecDestroy(&k1);CHKERRQ(ierr);
+<           ierr = VecDestroy(&k2);CHKERRQ(ierr);
+<           ierr = VecDestroy(&k3);CHKERRQ(ierr);
+<           ierr = VecDestroy(&k4);CHKERRQ(ierr);
+---
+>           ierr = VecCopy(algebra->solution, algebra->oldsolution);CHKERRQ(ierr);//U^n
+>           ierr = VecAXPY(algebra->solution, user->dt, algebra->fn);CHKERRQ(ierr);//U^{(1)}
+>           ierr = FormTimeStepFunction(user, algebra, algebra->solution, algebra->fn);CHKERRQ(ierr);//f(U^{(1)})
+>           ierr = VecAXPY(algebra->solution, 1.0, algebra->oldsolution);CHKERRQ(ierr);//U^n + U^{(1)}
+>           ierr = VecAXPY(algebra->solution, user->dt, algebra->fn);CHKERRQ(ierr);// + dt*f(U^{(1)})
+>           ierr = VecScale(algebra->solution, 0.5);CHKERRQ(ierr);
+194,207c140
+<           PetscReal fnnorm;
+<           ierr = VecNorm(algebra->fn,NORM_2,&fnnorm);CHKERRQ(ierr);
+<           //ierr = VecView(algebra->fn, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
+<           if(0){
+<             PetscViewer    viewer;
+<             ierr = OutputVTK(user->dm, "function.vtk", &viewer);CHKERRQ(ierr);
+<             ierr = VecView(algebra->fn, viewer);CHKERRQ(ierr);
+<             ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+<             ierr = PetscPrintf(PETSC_COMM_WORLD,"Step %D at time %g with founction norm = %g \n",
+<                                 user->current_step, user->current_time, fnnorm);CHKERRQ(ierr);
+<             //break;
+<           }
+< 
+<           ierr = VecNorm(algebra->solution,NORM_2,&norm);CHKERRQ(ierr);
+---
+>           ierr = VecNorm(algebra->solution,NORM_INFINITY,&norm);CHKERRQ(ierr);
+209,210c142
+<           norm   = norm/size;
+<           fnnorm = fnnorm/size;
+---
+>           norm = norm/size;
+219c151
+< //          ierr =  PetscMallocGetCurrentUsage(&space);CHKERRQ(ierr);
+---
+>           ierr =  PetscMallocGetCurrentUsage(&space);CHKERRQ(ierr);
+229c161
+<           ierr = VecNorm(algebra->oldsolution,NORM_2,&norm);CHKERRQ(ierr);
+---
+>           ierr = VecNorm(algebra->oldsolution,NORM_INFINITY,&norm);CHKERRQ(ierr);
+238c170
+<         if (user->output_solution && (user->current_step%user->steps_output==0)){
+---
+>         if (user->output_solution && (user->current_step%steps_output==0)){
+241d172
+<           nplot = user->current_step/user->steps_output;
+243c174
+<           ierr = PetscSNPrintf(fileName, sizeof(fileName),"%s_%d.vtk",user->solutionfile, nplot);CHKERRQ(ierr);
+---
+>           ierr = PetscSNPrintf(fileName, sizeof(fileName),"%s_%d.vtk",filename1, nplot);CHKERRQ(ierr);
+247a179
+>           nplot++;
+253d184
+< 
+255c186
+<     }else{ // Using the fully explicit method based on the PETSC TS routing
+---
+>     }else{
+264d194
+<       ierr = VecSet(algebra->solution, 0.0);CHKERRQ(ierr);
+269c199
+<       ierr = TSMonitorSet(ts,TSMonitorFunctionError,(void*)user,NULL);CHKERRQ(ierr);
+---
+>       ierr = TSMonitorSet(ts,TSMonitorFunctionError,&user,NULL);CHKERRQ(ierr);
+280d209
+< 
+287a217,223
+>     if (user->output_solution){
+>       PetscViewer    viewer;
+>       ierr = OutputVTK(user->dm, "solution.vtk", &viewer);CHKERRQ(ierr);
+>       ierr = VecView(algebra->solution, viewer);CHKERRQ(ierr);
+>       ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+>     }
+> 
+306,307c242
+<     if(user->myownexplicitmethod){ierr = VecDestroy(&algebra->oldsolution);CHKERRQ(ierr);}
+<     ierr = VecDestroy(&algebra->exactsolution);CHKERRQ(ierr);
+---
+>     ierr = VecDestroy(&algebra->oldsolution);CHKERRQ(ierr);
+309c244
+<   } else if (user->TimeIntegralMethod == IMPLICITMETHOD) { // Using the fully implicit method
+---
+>   } else if (user->TimeIntegralMethod == IMPLICITMETHOD) {
+423d357
+<   PetscBool         set = PETSC_FALSE;
+486,494d419
+< 
+<     if(user->output_solution){
+<     // the output file options
+<       ierr = PetscOptionsString("-solutionfile", "solution file", "AeroSim.c", user->solutionfile,user->solutionfile, 2048, &set);CHKERRQ(ierr);
+<       if(!set){SETERRQ(PETSC_COMM_SELF, PETSC_ERR_ARG_NULL,"please use option -solutionfile to specify solution file name \n");}
+<       ierr = PetscOptionsInt("-steps_output", "the number of time steps between two outputs", "", user->steps_output, &user->steps_output, &set);CHKERRQ(ierr);
+<       if(!set){ user->steps_output = 1;}
+<     }
+< 
+522,523d446
+<     user->Explicit_RK4 = PETSC_FALSE;
+<     ierr = PetscOptionsBool("-Explicit_RK4","Use the second order Runge Kutta method","",user->Explicit_RK4,&user->Explicit_RK4,NULL);CHKERRQ(ierr);

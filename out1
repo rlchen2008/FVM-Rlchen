@@ -1,0 +1,154 @@
+170d169
+<   //VecView(out,PETSC_VIEWER_STDOUT_WORLD);
+179,180c178,179
+< //  ierr = DMLocalToGlobalBegin(user->dm, inLocal, INSERT_VALUES, in);CHKERRQ(ierr);
+< //  ierr = DMLocalToGlobalEnd(user->dm, inLocal, INSERT_VALUES, in);CHKERRQ(ierr);
+---
+>   ierr = DMLocalToGlobalBegin(user->dm, inLocal, INSERT_VALUES, in);CHKERRQ(ierr);
+>   ierr = DMLocalToGlobalEnd(user->dm, inLocal, INSERT_VALUES, in);CHKERRQ(ierr);
+244d242
+<   ierr = CaculateLocalSourceTerm(user->dm, inLocal, out, user);CHKERRQ(ierr);
+437,438d434
+<  //       if (fL) PetscPrintf(PETSC_COMM_SELF, "x=%g, y=%g, z=%g,fluxcon[i]=%g, FaceArea=%g, volume=%g, fLc=%g, fL=%g\n",fg->centroid[0], fg->centroid[1], fg->centroid[2],fluxcon[i],FaceArea,cgL->volume,FaceArea*(fluxcon[i] + fluxdiff[i])/cgL->volume,fL[i]);
+< 
+440,443c436,437
+<           fL[i] -= FaceArea*(fluxcon[i] + fluxdiff[i])/cgL->volume;
+<           if (PetscAbsScalar(fL[i])<1.e-8) {
+<             fL[i] = 0.0;
+<           } // to avoid the too small number, is this necessary? not sure!
+---
+>            fL[i] -= FaceArea*(fluxcon[i] + fluxdiff[i])/cgL->volume;
+>       //    if (fL) PetscPrintf(PETSC_COMM_SELF, "x=%g, y=%g, z=%g,fluxcon[i]=%g, FaceArea=%g, volume=%g, fLc=%g, fL=%g\n",fg->centroid[0], fg->centroid[1], fg->centroid[2],fluxcon[i],FaceArea,cgL->volume,FaceArea*(fluxcon[i] + fluxdiff[i])/cgL->volume,fL[i]);
+445,452c439
+< //        if (fL) PetscPrintf(PETSC_COMM_SELF, "    x=%g, y=%g, z=%g,fluxcon[i]=%g, FaceArea=%g, volume=%g, fLc=%g, fL=%g\n",fg->centroid[0], fg->centroid[1], fg->centroid[2],fluxcon[i],FaceArea,cgL->volume,FaceArea*(fluxcon[i] + fluxdiff[i])/cgL->volume,fL[i]);
+<         if (fR) {
+<           fR[i] += FaceArea*(fluxcon[i] + fluxdiff[i])/cgR->volume;
+<           if (PetscAbsScalar(fR[i])<1.e-8) {
+<             fR[i] = 0.0;
+<           } // to avoid the too small number
+<         }
+< 
+---
+>         if (fR) fR[i] += FaceArea*(fluxcon[i] + fluxdiff[i])/cgR->volume;
+619,632c606,609
+<         if (cf[0]){
+<           cf[0][i] -= FaceArea*(fluxcon[i] + fluxdiff[i])/cg[0]->volume;
+<           if (PetscAbsScalar(cf[0][i])<1.e-8) {
+<             cf[0][i] = 0.0;
+<           } // to avoid the too small number
+<         }
+<         if (cf[1]){
+<           cf[1][i] += FaceArea*(fluxcon[i] + fluxdiff[i])/cg[1]->volume;
+<           if (PetscAbsScalar(cf[1][i])<1.e-8) {
+<             cf[1][i] = 0.0;
+<           } // to avoid the too small number. is this necessary? not sure!
+<         }
+<        // The flux on the interface, for the cell[0], it is an outcoming flux and for the cell[1], it is
+<        //   an incoming flux.
+---
+>         if (cf[0]) cf[0][i] -= FaceArea*(fluxcon[i] + fluxdiff[i])/cg[0]->volume;
+>         if (cf[1]) cf[1][i] += FaceArea*(fluxcon[i] + fluxdiff[i])/cg[1]->volume;
+>        // The flux on the interface, for the cell[0], it is an outcome flux and for the cell[1], it is
+>        //   an income flux.
+838,839d814
+<   if(user->benchmark_couette) { (*p) = 1000;}
+< 
+866,867d840
+<   if(user->benchmark_couette) { (*p) = 1000;}
+< 
+1068,1070c1041
+<   for (i=0; i<2+DIM; i++) {
+<     fluxcon[i] = 0.5*(fLcon.vals[i] + fRcon.vals[i]) + 0.5*speed*(xL[i] - xR[i]);
+<   }
+---
+>   for (i=0; i<2+DIM; i++) fluxcon[i] = 0.5*(fLcon.vals[i] + fRcon.vals[i]) + 0.5*speed*(xL[i] - xR[i]);
+1079d1049
+< 
+1159,1161d1128
+<     PetscScalar y;
+< 
+<     y = x[1];
+1164c1131
+<     T = user->T0 + (y/H)*(user->T1 - user->T0) + (user->viscosity*U*U)/(2*user->k)*(y/H)*(1.0 - y/H);
+---
+>     T = user->T0 + x[1]/H*(user->T1 - user->T0) + user->viscosity*U*U/(2*user->k)*x[1]/H*(1.0 - x[1]/H);
+1167c1134
+<     u[1] = u[0]*y*U/H + 0.001; /*Velocity rho*u (the x-direction)*/
+---
+>     u[1] = u[0]*x[1]/H*U + 0.001; /*Velocity u (the x-direction)*/
+1170c1137
+<     u[4] = 1.0/(user->adiabatic*(user->adiabatic-1)) + 0.5*u[0]*(u[1]*u[1]+u[2]*u[2]+u[3]*u[3]); /*the density total energy rho*E = rho*e + 0.5*rho*|u|^2 = rho*(p/(rho*(gamma-1))) + 0.5*rho*|u|^2*/
+---
+>     u[4] = 1.0; /*Energy*/
+1172,1174c1139,1140
+<     u[1] = 0;
+<     //PetscErrorCode  ierr;
+<     //ierr = ExactSolution(time, x, u, user);CHKERRQ(ierr);
+---
+>     PetscErrorCode  ierr;
+>     ierr = ExactSolution(time, x, u, user);CHKERRQ(ierr);
+1303c1269
+< PetscErrorCode  TSMonitorFunctionError(TS ts,PetscInt step,PetscReal ptime,Vec u,void *ctx)
+---
+> PetscErrorCode  TSMonitorFunctionError(TS ts,PetscInt step,PetscReal ptime,Vec u,void *user)
+1305,1306d1270
+<   User              user = (User) ctx;
+< 
+1309c1273
+<   //PetscLogDouble    space =0;
+---
+>   PetscLogDouble    space =0;
+1312,1313d1275
+<   PetscInt          nplot = 0;
+<   char              fileName[2048];
+1317,1318c1279
+<       ierr = VecDuplicate(u, &func);CHKERRQ(ierr);
+<       ierr = TSComputeRHSFunction(ts, ptime, u, func);CHKERRQ(ierr);
+---
+>       ierr = TSGetRHSFunction(ts, &func,NULL, NULL);CHKERRQ(ierr);
+1321d1281
+<       ierr = VecDestroy(&func);CHKERRQ(ierr);
+1324,1341c1284,1287
+<       norm      = norm/size;
+<       funcnorm  = funcnorm/size;
+<       ierr = PetscPrintf(PETSC_COMM_WORLD,"Step %D at time %g with solution norm = %g right hand side function norm = %g\n",step, ptime,norm, funcnorm);CHKERRQ(ierr);
+<       //ierr =  PetscMallocGetCurrentUsage(&space);CHKERRQ(ierr);
+<       //ierr =  PetscPrintf(PETSC_COMM_WORLD,"Current space PetscMalloc()ed %g M\n", space/(1024*1024));CHKERRQ(ierr);
+<   }
+< 
+<   // output the solution
+<   if (user->output_solution && (step%user->steps_output==0)){
+<     PetscViewer    viewer;
+< 
+<     nplot = step/user->steps_output;
+<     // update file name for the current time step
+<     ierr = PetscSNPrintf(fileName, sizeof(fileName),"%s_%d.vtk",user->solutionfile, nplot);CHKERRQ(ierr);
+<     ierr = PetscPrintf(PETSC_COMM_WORLD,"Outputing solution %s (current time %f)\n", fileName, ptime);CHKERRQ(ierr);
+<     ierr = OutputVTK(user->dm, fileName, &viewer);CHKERRQ(ierr);
+<     ierr = VecView(u, viewer);CHKERRQ(ierr);
+<     ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+---
+>       norm = norm/size;
+>       ierr = PetscPrintf(PETSC_COMM_WORLD,"Step %D at time %g with solution norm = %g right hand side function norm = %f\n",step, ptime,norm, funcnorm);CHKERRQ(ierr);
+>       ierr =  PetscMallocGetCurrentUsage(&space);CHKERRQ(ierr);
+>       ierr =  PetscPrintf(PETSC_COMM_WORLD,"Current space PetscMalloc()ed %g M\n", space/(1024*1024));CHKERRQ(ierr);
+1352c1298
+<   PetscScalar y;
+---
+>   PetscScalar x, y, z;
+1356c1302
+<   y = c[1];
+---
+>   x = c[0]; y = c[1]; z = c[2];
+1362c1308
+<   xc[1] = xc[0]*y*U/H; /*Velocity rho*u (the x-direction)*/
+---
+>   xc[1] = y*U/H; /*Velocity u (the x-direction)*/
+1365,1369c1311
+<   xc[4] = 1.0/(user->adiabatic*(user->adiabatic-1)) + 0.5*xc[0]*(xc[1]*xc[1]+xc[2]*xc[2]+xc[3]*xc[3]); /*the density total energy rho*E = rho*e + 0.5*rho*|u|^2 = rho*(p/(rho*(gamma-1))) + 0.5*rho*|u|^2*/
+< 
+<   //xc[0] = 1.0; /*Density*/
+<   //xc[1] = 1.0;
+<   //xc[4] = 1.0;
+---
+>   xc[4] = T; /*Temperature*/

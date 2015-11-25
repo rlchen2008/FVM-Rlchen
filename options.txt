@@ -1,0 +1,667 @@
+Second Order TVD Finite Volume Example.
+--------------------------------------------------------------------------
+Petsc Release Version 3.5.2, unknown 
+       The PETSc Team
+    petsc-maint@mcs.anl.gov
+ http://www.mcs.anl.gov/petsc/
+See docs/changes/index.html for recent updates.
+See docs/faq.html for problems.
+See docs/manualpages/index.html for help. 
+Libraries linked from /home/rlchen/soft/petsc-3.5.2/64bit-debug/lib
+--------------------------------------------------------------------------
+Options for all PETSc programs:
+ -help: prints help method for each option
+ -on_error_abort: cause an abort when an error is detected. Useful 
+        only when run in the debugger
+ -on_error_attach_debugger [gdb,dbx,xxgdb,ups,noxterm]
+       start the debugger in new xterm
+       unless noxterm is given
+ -start_in_debugger [gdb,dbx,xxgdb,ups,noxterm]
+       start all processes in the debugger
+ -on_error_emacs <machinename>
+    emacs jumps to error file
+ -debugger_nodes [n1,n2,..] Nodes to start in debugger
+ -debugger_pause [m] : delay (in seconds) to attach debugger
+ -stop_for_debugger : prints message on how to attach debugger manually
+                      waits the delay for you to attach
+ -display display: Location where X window graphics and debuggers are displayed
+ -no_signal_handler: do not trap error signals
+ -mpi_return_on_error: MPI returns error code, rather than abort on internal error
+ -fp_trap: stop on floating point exceptions
+           note on IBM RS6000 this slows run greatly
+ -malloc_dump <optional filename>: dump list of unfreed memory at conclusion
+ -malloc: use our error checking malloc
+ -malloc no: don't use error checking malloc
+ -malloc_info: prints total memory usage
+ -malloc_log: keeps log of all memory allocations
+ -malloc_debug: enables extended checking for memory corruption
+ -options_table: dump list of options inputted
+ -options_left: dump list of unused options
+ -options_left no: don't dump list of unused options
+ -tmp tmpdir: alternative /tmp directory
+ -shared_tmp: tmp directory is shared by all processors
+ -not_shared_tmp: each processor has separate tmp directory
+ -memory_info: print memory usage at end of run
+ -server <port>: Run PETSc webserver (default port is 8080) see PetscWebServe()
+ -get_total_flops: total flops over all processors
+ -log[_summary _summary_python]: logging objects and events
+ -log_trace [filename]: prints trace of all PETSc calls
+ -info <optional filename>: print informative messages about the calculations
+ -v: prints PETSc version number and release date
+ -options_file <file>: reads options from file
+ -petsc_sleep n: sleeps n seconds before running program
+-----------------------------------------------
+------Additional PETSc component options--------
+ -log_summary_exclude: <vec,mat,pc.ksp,snes>
+ -info_exclude: <null,vec,mat,pc,ksp,snes,ts>
+-----------------------------------------------
+Options database options -------------------------------------------------
+  -options_monitor <stdout>: Monitor options database (PetscOptionsMonitorSet)
+  -options_monitor_cancel: <FALSE> Cancel all options database monitors (PetscOptionsMonitorCancel)
+Unstructured Finite Volume Mesh Options -------------------------------------------------
+  -ufv_cfl <3.6>: CFL number per step ()
+  -f <meshes/sevenside-quad-15.exo>: Exodus.II filename to read ()
+  -ufv_split_faces: <FALSE> Split faces between cell sets ()
+  -ufv_mesh_overlap <1>: Number of cells to overlap partitions ()
+  -ufv_vtk_interval <1>: VTK output interval (0 to disable) ()
+  -ufv_vtk_cellgeom: <FALSE> Write cell geometry (for debugging) ()
+Thread comm - setting number of threads -------------------------------------------------
+  -threadcomm_nthreads <1>: number of threads to use in the thread communicator (PetscThreadCommSetNThreads)
+Thread comm - setting thread affinities -------------------------------------------------
+  -threadcomm_affinities <0>: Set core affinities of threads (PetscThreadCommSetAffinities)
+Thread comm - setting number of kernels -------------------------------------------------
+  -threadcomm_nkernels <16>: number of kernels that can be launched simultaneously ()
+Thread comm - setting threading model -------------------------------------------------
+  -threadcomm_type <nothread>: Thread communicator model (one of) nothread (PetscThreadCommSetType)
+Unstructured Finite Volume Physics Options -------------------------------------------------
+  -physics <sw>: Physics module to solve (one of) advect sw euler ()
+  SW options
+  -sw_gravity <1>: Gravitational constant ()
+  -monitor <string1,string2,...>: list of functionals to monitor ()
+Star Forest (PetscSF) options -------------------------------------------------
+  -sf_type <basic>: PetscSF implementation type (one of) window basic (PetscSFSetType)
+  -sf_rank_order: <TRUE> sort composite points for gathers and scatters in rank order, gathers are non-deterministic otherwise (PetscSFSetRankOrder)
+  PetscSF Basic options
+Star Forest (PetscSF) options -------------------------------------------------
+  -sf_type <basic>: PetscSF implementation type (one of) window basic (PetscSFSetType)
+  -sf_rank_order: <TRUE> sort composite points for gathers and scatters in rank order, gathers are non-deterministic otherwise (PetscSFSetRankOrder)
+  PetscSF Basic options
+Distribution Manager (DM) options -------------------------------------------------
+  -dm_preallocate_only: <FALSE> only preallocate matrix, but do not set column indices (DMSetMatrixPreallocateOnly)
+  -dm_vec_type <standard>: Vector type used for created vectors (one of) seq mpi standard shared (DMSetVecType)
+  -dm_mat_type <aij>: Matrix type used for created matrices (one of) mffd mpimaij seqmaij maij is shell composite mpiaij
+      seqaij mpiaijperm seqaijperm seqaijcrl mpiaijcrl mpibaij seqbaij mpisbaij seqsbaij mpibstrm seqbstrm mpisbstrm seqsbstrm mpidense seqdense mpiadj scatter blockmat nest (DMSetMatType)
+  -dm_is_coloring_type <global> (choose one of) global ghosted (ISColoringType)
+  DMPlex Options
+  -dm_refine <0>: The number of uniform refinements (DMCreate)
+  -dm_refine_hierarchy <0>: The number of uniform refinements (DMCreate)
+Boundary condition options -------------------------------------------------
+  -bc_wall <0>: List of boundary IDs ()
+Finite Volume (PetscFV) options -------------------------------------------------
+  -petscfv_type <upwind>: Finite volume discretization (one of) upwind leastsquares (PetscFVSetType)
+Finite Volume Slope Limiter (PetscLimiter) options -------------------------------------------------
+  -petsclimiter_type <sin>: Finite volume slope limiter (one of) sin zero none minmod vanleer vanalbada superbee mc
+      (PetscLimiterSetType)
+Time stepping (TS) options -------------------------------------------------
+  -ts_type <ssp>: TS method (one of) euler beuler cn pseudo gl ssp theta alpha
+      rk arkimex rosw eimex ( TSSetType)
+  -ts_max_steps <1000>: Maximum number of time steps (TSSetDuration)
+  -ts_final_time <2>: Time to run to (TSSetDuration)
+  -ts_init_time <0>: Initial time (TSSetTime)
+  -ts_dt <0.117096>: Initial time step (TSSetTimeStep)
+  -ts_exact_final_time <STEPOVER> (choose one of) STEPOVER INTERPOLATE MATCHSTEP (TSSetExactFinalTime)
+  -ts_max_snes_failures <1>: Maximum number of nonlinear solve failures (TSSetMaxSNESFailures)
+  -ts_max_reject <10>: Maximum number of step rejections before step fails (TSSetMaxStepRejections)
+  -ts_error_if_step_fails: <TRUE> Error if no step succeeds (TSSetErrorIfStepFails)
+  -ts_rtol <0.0001>: Relative tolerance for local truncation error (TSSetTolerances)
+  -ts_atol <0.0001>: Absolute tolerance for local truncation error (TSSetTolerances)
+  -ts_monitor <stdout>: Monitor timestep size (TSMonitorDefault)
+  -ts_monitor_python <(null)>: Use Python function (TSMonitorSet)
+  -ts_monitor_lg_timestep: Monitor timestep size graphically (TSMonitorLGTimeStep)
+  -ts_monitor_lg_solution: Monitor solution graphically (TSMonitorLGSolution)
+  -ts_monitor_lg_error: Monitor error graphically (TSMonitorLGError)
+  -ts_monitor_lg_snes_iterations: Monitor number nonlinear iterations for each timestep graphically (TSMonitorLGSNESIterations)
+  -ts_monitor_lg_ksp_iterations: Monitor number nonlinear iterations for each timestep graphically (TSMonitorLGKSPIterations)
+  -ts_monitor_sp_eig: Monitor eigenvalues of linearized operator graphically (TSMonitorSPEig)
+  -ts_monitor_draw_solution: Monitor solution graphically (TSMonitorDrawSolution)
+  -ts_monitor_draw_solution_phase: Monitor solution graphically (TSMonitorDrawSolutionPhase)
+  -ts_monitor_draw_error: Monitor error graphically (TSMonitorDrawError)
+  -ts_monitor_solution_binary <(null)>: Save each solution to a binary file (TSMonitorSolutionBinary)
+  -ts_monitor_solution_vtk <(null)>: Save each time step to a binary file, use filename-%%03D.vts (TSMonitorSolutionVTK)
+  -ts_monitor_dmda_ray <y=0>: Display a ray of the solution (None)
+  -ts_monitor_lg_dmda_ray <x=0>: Display a ray of the solution (None)
+  TS Adaptivity options
+  -ts_adapt_type <basic>: Algorithm to use for adaptivity (one of) basic none cfl (TSAdaptSetType)
+  Basic adaptive controller options
+  -ts_adapt_basic_clip <0.1>: Admissible decrease/increase in step size ()
+  -ts_adapt_basic_safety <0.9>: Safety factor relative to target error ()
+  -ts_adapt_basic_reject_safety <0.5>: Extra safety factor to apply if the last step was rejected ()
+  -ts_adapt_basic_always_accept: <FALSE> Always accept the step regardless of whether local truncation error meets goal ()
+  -ts_adapt_dt_min <1e-20>: Minimum time step considered (TSAdaptSetStepLimits)
+  -ts_adapt_dt_max <1e+50>: Maximum time step considered (TSAdaptSetStepLimits)
+  -ts_adapt_scale_solve_failed <0.25>: Scale step by this factor if solve fails ()
+  -ts_adapt_monitor: <FALSE> Print choices made by adaptive controller (TSAdaptSetMonitor)
+  Theta ODE solver options
+  -ts_theta_theta <1>: Location of stage (0<Theta<=1) (TSThetaSetTheta)
+  -ts_theta_extrapolate: <FALSE> Extrapolate stage solution from previous solution (sometimes unstable) (TSThetaSetExtrapolate)
+  -ts_theta_endpoint: <FALSE> Use the endpoint instead of midpoint form of the Theta method (TSThetaSetEndpoint)
+  -ts_theta_adapt: <FALSE> Use time-step adaptivity with the Theta method ()
+Nonlinear solver (SNES) options -------------------------------------------------
+  -snes_type <newtonls>: Nonlinear solver method (one of) newtonls newtontr test nrichardson ksponly vinewtonrsls vinewtonssls ngmres
+      qn shell ngs ncg fas ms nasm anderson aspin composite (SNESSetType)
+  -snes_stol <1e-08>: Stop if step length less than (SNESSetTolerances)
+  -snes_atol <1e-50>: Stop if function norm less than (SNESSetTolerances)
+  -snes_rtol <1e-08>: Stop if decrease in function norm less than (SNESSetTolerances)
+  -snes_max_it <50>: Maximum iterations (SNESSetTolerances)
+  -snes_max_funcs <10000>: Maximum function evaluations (SNESSetTolerances)
+  -snes_max_fail <1>: Maximum nonlinear step failures (SNESSetMaxNonlinearStepFailures)
+  -snes_max_linear_solve_fail <1>: Maximum failures in linear solves allowed (SNESSetMaxLinearSolveFailures)
+  -snes_error_if_not_converged: <FALSE> Generate error if solver does not converge (SNESSetErrorIfNotConverged)
+  -snes_lag_preconditioner <1>: How often to rebuild preconditioner (SNESSetLagPreconditioner)
+  -snes_lag_preconditioner_persists: <FALSE> Preconditioner lagging through multiple solves (SNESSetLagPreconditionerPersists)
+  -snes_lag_jacobian <1>: How often to rebuild Jacobian (SNESSetLagJacobian)
+  -snes_lag_jacobian_persists: <FALSE> Jacobian lagging through multiple solves (SNESSetLagJacobianPersists)
+  -snes_grid_sequence <0>: Use grid sequencing to generate initial guess (SNESSetGridSequence)
+  -snes_convergence_test <default> (choose one of) default skip (SNESSetConvergenceTest)
+  -snes_converged_reason: <FALSE> Print reason for converged or diverged (SNESSolve)
+  -snes_norm_schedule <function> (choose one of) NONE ALWAYS INITIALONLY FINALONLY INITIALFINALONLY (SNESSetNormSchedule)
+  -snes_function_type <unpreconditioned> (choose one of) UNPRECONDITIONED PRECONDITIONED (SNESSetFunctionType)
+  -snes_ksp_ew: <FALSE> Use Eisentat-Walker linear system convergence test (SNESKSPSetUseEW)
+  -snes_ksp_ew_version <2>: Version 1, 2 or 3 (SNESKSPSetParametersEW)
+  -snes_ksp_ew_rtol0 <0.3>: 0 <= rtol0 < 1 (SNESKSPSetParametersEW)
+  -snes_ksp_ew_rtolmax <0.9>: 0 <= rtolmax < 1 (SNESKSPSetParametersEW)
+  -snes_ksp_ew_gamma <1>: 0 <= gamma <= 1 (SNESKSPSetParametersEW)
+  -snes_ksp_ew_alpha <1.61803>: 1 < alpha <= 2 (SNESKSPSetParametersEW)
+  -snes_ksp_ew_alpha2 <1.61803>: alpha2 (SNESKSPSetParametersEW)
+  -snes_ksp_ew_threshold <0.1>: 0 < threshold < 1 (SNESKSPSetParametersEW)
+  -snes_check_jacobian: <FALSE> Check each Jacobian with a differenced one (SNESUpdateCheckJacobian)
+  -snes_monitor_cancel: <FALSE> Remove all monitors (SNESMonitorCancel)
+  -snes_monitor <stdout>: Monitor norm of function (SNESMonitorSet)
+  -snes_monitor_range <stdout>: Monitor range of elements of function (SNESMonitorSet)
+  -snes_ratiomonitor <stdout>: Monitor ratios of norms of function (SNESMonitorSetRatio)
+  -snes_monitor_short <stdout>: Monitor norm of function (fewer digits) (SNESMonitorSet)
+  -snes_monitor_python <(null)>: Use Python function (SNESMonitorSet)
+  -snes_monitor_solution: <FALSE> Plot solution at each iteration (SNESMonitorSolution)
+  -snes_monitor_solution_update: <FALSE> Plot correction at each iteration (SNESMonitorSolutionUpdate)
+  -snes_monitor_residual: <FALSE> Plot residual at each iteration (SNESMonitorResidual)
+  -snes_monitor_lg_residualnorm: <FALSE> Plot function norm at each iteration (SNESMonitorLGResidualNorm)
+  -snes_monitor_lg_range: <FALSE> Plot function range at each iteration (SNESMonitorLGRange)
+  -snes_monitor_jacupdate_spectrum: <FALSE> Print the change in the spectrum of the Jacobian (SNESMonitorJacUpdateSpectrum)
+  -snes_monitor_fields <stdout>: Monitor norm of function per field (SNESMonitorSet)
+  -snes_fd: <FALSE> Use finite differences (slow) to compute Jacobian (SNESComputeJacobianDefault)
+  -snes_fd_function: <FALSE> Use finite differences (slow) to compute function from user objective (SNESObjectiveComputeFunctionDefaultFD)
+  -snes_fd_color: <FALSE> Use finite differences with coloring to compute Jacobian (SNESComputeJacobianDefaultColor)
+  -snes_mf_operator: <FALSE> Use a Matrix-Free Jacobian with user-provided preconditioner matrix (MatCreateSNESMF)
+  -snes_mf: <FALSE> Use a Matrix-Free Jacobian with no preconditioner matrix (MatCreateSNESMF)
+  -snes_mf_version <1>: Matrix-Free routines version 1 or 2 (None)
+  -snes_npc_side <RIGHT> (choose one of) LEFT RIGHT SYMMETRIC (SNESSetNPCSide)
+Preconditioner (PC) options -------------------------------------------------
+  -pc_type <bjacobi>: Preconditioner (one of) none jacobi pbjacobi bjacobi sor lu shell mg
+      eisenstat ilu icc cholesky asm gasm ksp composite redundant nn mat fieldsplit galerkin exotic cp lsc redistribute svd gamg kaczmarz tfs (PCSetType)
+  -pc_use_amat: <FALSE> use Amat (instead of Pmat) to define preconditioner in nested inner solves (PCSetUseAmat)
+  Block Jacobi options
+  -pc_bjacobi_blocks <-1>: Total number of blocks (PCBJacobiSetTotalBlocks)
+Krylov Method (KSP) options -------------------------------------------------
+  -ksp_type <gmres>: Krylov method (one of) cg groppcg pipecg cgne nash stcg gltr richardson
+      chebyshev gmres tcqmr bcgs ibcgs fbcgs fbcgsr bcgsl cgs tfqmr cr pipecr lsqr preonly qcg bicg fgmres minres symmlq lgmres lcd gcr pgmres specest dgmres (KSPSetType)
+  -ksp_max_it <10000>: Maximum number of iterations (KSPSetTolerances)
+  -ksp_rtol <1e-05>: Relative decrease in residual norm (KSPSetTolerances)
+  -ksp_atol <1e-50>: Absolute value of residual norm (KSPSetTolerances)
+  -ksp_divtol <10000>: Residual norm increase cause divergence (KSPSetTolerances)
+  -ksp_converged_use_initial_residual_norm: <FALSE> Use initial residual residual norm for computing relative convergence (KSPConvergedDefaultSetUIRNorm)
+  -ksp_converged_use_min_initial_residual_norm: <FALSE> Use minimum of initial residual norm and b for computing relative convergence (KSPConvergedDefaultSetUMIRNorm)
+  -ksp_initial_guess_nonzero: <FALSE> Use the contents of the solution vector for initial guess (KSPSetInitialNonzero)
+  -ksp_knoll: <FALSE> Use preconditioner applied to b for initial guess (KSPSetInitialGuessKnoll)
+  -ksp_error_if_not_converged: <FALSE> Generate error if solver does not converge (KSPSetErrorIfNotConverged)
+  -ksp_fischer_guess <0>: Use Paul Fischer's algorithm for initial guess (KSPSetUseFischerGuess)
+  -ksp_convergence_test <default> (choose one of) default skip (KSPSetConvergenceTest)
+  -ksp_norm_type <PRECONDITIONED> (choose one of) NONE PRECONDITIONED UNPRECONDITIONED NATURAL (KSPSetNormType)
+  -ksp_check_norm_iteration <-1>: First iteration to compute residual norm (KSPSetCheckNormIteration)
+  -ksp_lag_norm: <FALSE> Lag the calculation of the residual norm (KSPSetLagNorm)
+  -ksp_diagonal_scale: <FALSE> Diagonal scale matrix before building preconditioner (KSPSetDiagonalScale)
+  -ksp_diagonal_scale_fix: <FALSE> Fix diagonally scaled matrix after solve (KSPSetDiagonalScaleFix)
+  -ksp_constant_null_space: <FALSE> Add constant null space to Krylov solver (KSPSetNullSpace)
+  -ksp_converged_reason: <FALSE> Print reason for converged or diverged (KSPSolve)
+  -ksp_monitor_cancel: <FALSE> Remove any hardwired monitor routines (KSPMonitorCancel)
+  -ksp_monitor <stdout>: Monitor preconditioned residual norm (KSPMonitorSet)
+  -ksp_monitor_range <stdout>: Monitor percent of residual entries more than 10 percent of max (KSPMonitorRange)
+  -sub_ksp_dynamic_tolerance <stdout>: Use dynamic tolerance for PC if PC is a KSP (KSPMonitorDynamicTolerance)
+  -ksp_monitor_solution: <FALSE> Monitor solution graphically (KSPMonitorSet)
+  -ksp_monitor_true_residual <stdout>: Monitor true residual norm (KSPMonitorSet)
+  -ksp_monitor_max <stdout>: Monitor true residual max norm (KSPMonitorSet)
+  -ksp_monitor_singular_value <stdout>: Monitor singular values (KSPMonitorSet)
+  -ksp_monitor_short <stdout>: Monitor preconditioned residual norm with fewer digits (KSPMonitorSet)
+  -ksp_monitor_python <(null)>: Use Python function (KSPMonitorSet)
+  -ksp_monitor_lg_residualnorm: <FALSE> Monitor graphically preconditioned residual norm (KSPMonitorSet)
+  -ksp_monitor_lg_true_residualnorm: <FALSE> Monitor graphically true residual norm (KSPMonitorSet)
+  -ksp_monitor_lg_range: <FALSE> Monitor graphically range of preconditioned residual norm (KSPMonitorSet)
+  -ksp_pc_side <LEFT> (choose one of) LEFT RIGHT SYMMETRIC (KSPSetPCSide)
+  -ksp_compute_singularvalues: <FALSE> Compute singular values of preconditioned operator (KSPSetComputeSingularValues)
+  -ksp_compute_eigenvalues: <FALSE> Compute eigenvalues of preconditioned operator (KSPSetComputeSingularValues)
+  -ksp_plot_eigenvalues: <FALSE> Scatter plot extreme eigenvalues (KSPSetComputeSingularValues)
+  KSP GMRES Options
+  -ksp_gmres_restart <30>: Number of Krylov search directions (KSPGMRESSetRestart)
+  -ksp_gmres_haptol <1e-30>: Tolerance for exact convergence (happy ending) (KSPGMRESSetHapTol)
+  -ksp_gmres_preallocate: <FALSE> Preallocate Krylov vectors (KSPGMRESSetPreAllocateVectors)
+  Pick at most one of -------------
+    -ksp_gmres_classicalgramschmidt: Classical (unmodified) Gram-Schmidt (fast) (KSPGMRESSetOrthogonalization)
+    -ksp_gmres_modifiedgramschmidt: Modified Gram-Schmidt (slow,more stable) (KSPGMRESSetOrthogonalization)
+  -ksp_gmres_cgs_refinement_type <REFINE_NEVER> (choose one of) REFINE_NEVER REFINE_IFNEEDED REFINE_ALWAYS (KSPGMRESSetCGSRefinementType)
+  -ksp_gmres_krylov_monitor: <FALSE> Plot the Krylov directions (KSPMonitorSet)
+Linesearch (SNESLineSearch) options -------------------------------------------------
+  -snes_linesearch_type <bt>: Linesearch type (one of) shell basic l2 bt cp (SNESLineSearchSetType)
+  -snes_linesearch_monitor: <FALSE> Print progress of line searches (SNESSNESLineSearchSetMonitor)
+  -snes_linesearch_minlambda <1e-12>: Minimum step length (SNESLineSearchSetTolerances)
+  -snes_linesearch_maxstep <1e+08>: Maximum step size (SNESLineSearchSetTolerances)
+  -snes_linesearch_rtol <1e-08>: Relative tolerance for iterative line search (SNESLineSearchSetTolerances)
+  -snes_linesearch_atol <1e-15>: Absolute tolerance for iterative line search (SNESLineSearchSetTolerances)
+  -snes_linesearch_ltol <1e-08>: Change in lambda tolerance for iterative line search (SNESLineSearchSetTolerances)
+  -snes_linesearch_max_it <40>: Maximum iterations for iterative line searches (SNESLineSearchSetTolerances)
+  -snes_linesearch_damping <1>: Line search damping and initial step guess (SNESLineSearchSetDamping)
+  -snes_linesearch_keeplambda: <FALSE> Use previous lambda as damping (SNESLineSearchSetKeepLambda)
+  -snes_linesearch_precheck_picard: <FALSE> Use a correction that sometimes improves convergence of Picard iteration (SNESLineSearchPreCheckPicard)
+  -snes_linesearch_order <3>: Order of approximation used in the line search (SNESLineSearchSetOrder)
+  -snes_linesearch_norms: <TRUE> Compute final norms in line search (SNESLineSearchSetComputeNorms)
+  SNESLineSearch BT options
+  -snes_linesearch_alpha <0.0001>: Descent tolerance (SNESLineSearchBT)
+  0  time        0  |x|    2.986  
+Matrix (Mat) options -------------------------------------------------
+  -mat_block_size <-1>: Set the blocksize used to store the matrix (MatSetBlockSize)
+  -mat_type <aij>: Matrix type (one of) mffd mpimaij seqmaij maij is shell composite mpiaij
+      seqaij mpiaijperm seqaijperm seqaijcrl mpiaijcrl mpibaij seqbaij mpisbaij seqsbaij mpibstrm seqbstrm mpisbstrm seqsbstrm mpidense seqdense mpiadj scatter blockmat nest schurcomplement (MatSetType)
+  -mat_is_symmetric: Checks if mat is symmetric on MatAssemblyEnd() (MatIsSymmetric)
+  -mat_is_symmetric <0>: Checks if mat is symmetric on MatAssemblyEnd() (MatIsSymmetric)
+  -mat_null_space_test: <FALSE> Checks if provided null space is correct in MatAssemblyEnd() (MatSetNullSpaceTest)
+  -mat_new_nonzero_location_err: <FALSE> Generate an error if new nonzeros are created in the matrix structure (useful to test preallocation) (MatSetOption)
+  -mat_new_nonzero_allocation_err: <FALSE> Generate an error if new nonzeros are allocated in the matrix structure (useful to test preallocation) (MatSetOption)
+Options for SEQAIJ matrix -------------------------------------------------
+Options for SEQAIJ matrix -------------------------------------------------
+Options for SEQAIJ matrix -------------------------------------------------
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+Options for SEQAIJ matrix -------------------------------------------------
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+Options for SEQAIJ matrix -------------------------------------------------
+Options for SEQAIJ matrix -------------------------------------------------
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+Options for SEQAIJ matrix -------------------------------------------------
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+Options for SEQAIJ matrix -------------------------------------------------
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+    0 SNES Function norm 7.367544638958e+01 
+Matrix coloring (MatColoring) options -------------------------------------------------
+  -mat_coloring_type <sl>: The coloring method used (one of) jp greedy power natural sl id lf (MatColoringSetType)
+  -mat_coloring_distance <2>: Distance of the coloring (MatColoringSetDistance)
+  -mat_coloring_maxcolors <65535>: Maximum colors returned at the end. 1 returns an independent set (MatColoringSetMaxColors)
+  -mat_coloring_valid: <FALSE> Check that a valid coloring has been produced ()
+  -mat_coloring_weight_type <RANDOM> (choose one of) RANDOM LEXICAL LF SL (MatColoringSetWeightType)
+Options for SEQAIJ matrix -------------------------------------------------
+Options for SEQAIJ matrix -------------------------------------------------
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+Options for SEQAIJ matrix -------------------------------------------------
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+Options for SEQAIJ matrix -------------------------------------------------
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+Jacobian computation via finite differences with coloring (MatFDColoring) options -------------------------------------------------
+  -mat_fd_coloring_err <1.49012e-08>: Square root of relative error in function (MatFDColoringSetParameters)
+  -mat_fd_coloring_umin <1.49012e-06>: Minimum allowable u magnitude (MatFDColoringSetParameters)
+  -mat_fd_type <wp>: Algorithm to compute h, wp or ds (MatFDColoringCreate)
+  -mat_fd_coloring_brows <66>: Number of block rows (MatFDColoringSetBlockSize)
+  -mat_fd_coloring_bcols <15>: Number of block columns (MatFDColoringSetBlockSize)
+Preconditioner (PC) options -------------------------------------------------
+Preconditioner (PC) options -------------------------------------------------
+Preconditioner (PC) options -------------------------------------------------
+Preconditioner (PC) options -------------------------------------------------
+  -sub_pc_type <ilu>: Preconditioner (one of) none jacobi pbjacobi  -sub_pc_type <ilu>: Preconditioner (one of) none jacobi pbjacobi bjacobi sor lu bjacobi sor lu shell mg shell mg
+      eisenstat
+      eisenstat ilu icc ilu icc cholesky asm cholesky asm gasm ksp composite gasm ksp composite redundant nn mat redundant nn mat fieldsplit galerkin exotic fieldsplit galerkin exotic cp lsc cp lsc redistribute svd gamg redistribute svd gamg kaczmarz tfs kaczmarz tfs (PCSetType)
+ (PCSetType)
+  -sub_pc_type <ilu>: Preconditioner (one of) none jacobi  -sub_pc_use_amat: <FALSE> use Amat (instead of Pmat) to define preconditioner in nested inner solves (PCSetUseAmat)
+  -sub_pc_use_amat: <FALSE> use Amat (instead of Pmat) to define preconditioner in nested inner solves (PCSetUseAmat)
+  ILU Options
+  ILU Options
+  -sub_pc_factor_in_place: <FALSE> Form factored matrix in the same memory as the matrix (PCFactorSetUseInPlace)
+  -sub_pc_factor_in_place: <FALSE> Form factored matrix in the same memory as the matrix (PCFactorSetUseInPlace)
+ pbjacobi  -sub_pc_factor_fill <1>: Expected non-zeros in factored matrix (PCFactorSetFill)
+  -sub_pc_factor_fill <1>: Expected non-zeros in factored matrix (PCFactorSetFill)
+  -sub_pc_factor_shift_type <INBLOCKS> (choose one of) NONE NONZERO POSITIVE_DEFINITE INBLOCKS  -sub_pc_factor_shift_type <INBLOCKS> (choose one of) NONE NONZERO POSITIVE_DEFINITE INBLOCKS (PCFactorSetShiftType)
+ (PCFactorSetShiftType)
+  -sub_pc_factor_shift_amount <2.22045e-14>: Shift added to diagonal (PCFactorSetShiftAmount)
+  -sub_pc_factor_shift_amount <2.22045e-14>: Shift added to diagonal (PCFactorSetShiftAmount)
+  -sub_pc_factor_zeropivot <2.22045e-14>: Pivot is considered zero if less than (PCFactorSetZeroPivot)
+  -sub_pc_factor_zeropivot <2.22045e-14>: Pivot is considered zero if less than (PCFactorSetZeroPivot)
+  -sub_pc_factor_column_pivot <-2>: Column pivot tolerance (used only for some factorization) (PCFactorSetColumnPivot)
+  -sub_pc_factor_column_pivot <-2>: Column pivot tolerance (used only for some factorization) (PCFactorSetColumnPivot)
+  -sub_pc_factor_pivot_in_blocks: <TRUE> Pivot inside matrix dense blocks for BAIJ and SBAIJ (PCFactorSetPivotInBlocks)
+  -sub_pc_factor_pivot_in_blocks: <TRUE> Pivot inside matrix dense blocks for BAIJ and SBAIJ (PCFactorSetPivotInBlocks)
+  -sub_pc_factor_reuse_fill: <FALSE> Use fill from previous factorization (PCFactorSetReuseFill)
+  -sub_pc_factor_reuse_fill: <FALSE> Use fill from previous factorization (PCFactorSetReuseFill)
+  -sub_pc_factor_reuse_ordering: <FALSE> Reuse ordering from previous factorization (PCFactorSetReuseOrdering)
+  -sub_pc_factor_reuse_ordering: <FALSE> Reuse ordering from previous factorization (PCFactorSetReuseOrdering)
+  -sub_pc_factor_mat_ordering_type <natural>: Reordering to reduce nonzeros in factored matrix (one of) natural  -sub_pc_factor_mat_ordering_type <natural>: Reordering to reduce nonzeros in factored matrix (one of) natural nd 1wd rcm nd 1wd rcm qmd rowlength qmd rowlength spectral (PCFactorSetMatOrderingType)
+ spectral (PCFactorSetMatOrderingType)
+  -sub_pc_factor_mat_solver_package <petsc>: Specific direct solver to use (MatGetFactor)
+  -sub_pc_factor_mat_solver_package <petsc>: Specific direct solver to use (MatGetFactor)
+  -sub_pc_factor_levels <0>: levels of fill (PCFactorSetLevels)
+  -sub_pc_factor_levels <0>: levels of fill (PCFactorSetLevels)
+  -sub_pc_factor_diagonal_fill: <FALSE> Allow fill into empty diagonal entry (PCFactorSetAllowDiagonalFill)
+  -sub_pc_factor_diagonal_fill: <FALSE> Allow fill into empty diagonal entry (PCFactorSetAllowDiagonalFill)
+  -sub_pc_factor_nonzeros_along_diagonal: Reorder to remove zeros from diagonal (PCFactorReorderForNonzeroDiagonal)
+  -sub_pc_factor_nonzeros_along_diagonal: Reorder to remove zeros from diagonal (PCFactorReorderForNonzeroDiagonal)
+Krylov Method (KSP) options -------------------------------------------------
+Krylov Method (KSP) options -------------------------------------------------
+ bjacobi sor lu shell mg
+      eisenstat ilu  -sub_ksp_type <preonly>: Krylov method (one of) cg groppcg pipecg cgne nash stcg gltr richardson icc cholesky asm gasm ksp
+      chebyshev gmres tcqmr bcgs ibcgs composite redundant nn mat fieldsplit fbcgs fbcgsr bcgsl cgs tfqmr galerkin exotic cp lsc cr pipecr lsqr preonly redistribute svd gamg kaczmarz tfs qcg bicg fgmres minres (PCSetType)
+ symmlq lgmres lcd gcr pgmres specest dgmres (KSPSetType)
+  -sub_ksp_max_it <10000>: Maximum number of iterations (KSPSetTolerances)
+  -sub_ksp_rtol <1e-05>: Relative decrease in residual norm (KSPSetTolerances)
+  -sub_ksp_type <preonly>: Krylov method (one of) cg groppcg pipecg cgne nash stcg gltr richardson
+      chebyshev gmres tcqmr bcgs ibcgs fbcgs fbcgsr bcgsl cgs tfqmr cr pipecr lsqr preonly qcg bicg fgmres minres symmlq lgmres lcd gcr pgmres specest dgmres (KSPSetType)
+  -sub_pc_use_amat: <FALSE> use Amat (instead of Pmat) to define preconditioner in nested inner solves (PCSetUseAmat)
+  ILU Options
+  -sub_ksp_max_it <10000>: Maximum number of iterations (KSPSetTolerances)
+  -sub_pc_factor_in_place: <FALSE> Form factored matrix in the same memory as the matrix (PCFactorSetUseInPlace)
+  -sub_ksp_rtol <1e-05>: Relative decrease in residual norm (KSPSetTolerances)
+  -sub_ksp_atol <1e-50>: Absolute value of residual norm (KSPSetTolerances)
+  -sub_pc_factor_fill <1>: Expected non-zeros in factored matrix (PCFactorSetFill)
+  -sub_ksp_divtol <10000>: Residual norm increase cause divergence (KSPSetTolerances)
+  -sub_ksp_converged_use_initial_residual_norm: <FALSE> Use initial residual residual norm for computing relative convergence (KSPConvergedDefaultSetUIRNorm)
+  -sub_pc_factor_shift_type <INBLOCKS> (choose one of) NONE NONZERO  -sub_ksp_converged_use_min_initial_residual_norm: <FALSE> Use minimum of initial residual norm and b for computing relative convergence (KSPConvergedDefaultSetUMIRNorm)
+ POSITIVE_DEFINITE INBLOCKS (PCFactorSetShiftType)
+  -sub_ksp_initial_guess_nonzero: <FALSE> Use the contents of the solution vector for initial guess (KSPSetInitialNonzero)
+  -sub_ksp_knoll: <FALSE> Use preconditioner applied to b for initial guess (KSPSetInitialGuessKnoll)
+  -sub_pc_factor_shift_amount <2.22045e-14>: Shift added to diagonal (PCFactorSetShiftAmount)
+  -sub_ksp_error_if_not_converged: <FALSE> Generate error if solver does not converge (KSPSetErrorIfNotConverged)
+  -sub_pc_factor_zeropivot <2.22045e-14>: Pivot is considered zero if less than (PCFactorSetZeroPivot)
+  -sub_ksp_fischer_guess <0  -sub_pc_factor_column_pivot <-2>: Column pivot tolerance (used only for some factorization) (PCFactorSetColumnPivot)
+>: Use Paul Fischer's algorithm for initial guess (KSPSetUseFischerGuess)
+  -sub_pc_factor_pivot_in_blocks: <TRUE> Pivot inside matrix dense blocks for BAIJ and SBAIJ (PCFactorSetPivotInBlocks)
+  -sub_ksp_convergence_test <default> (choose one of) default skip (KSPSetConvergenceTest)
+  -sub_pc_factor_reuse_fill: <FALSE> Use fill from previous factorization (PCFactorSetReuseFill)
+  -sub_ksp_norm_type <NONE> (choose one of)  -sub_pc_factor_reuse_ordering: <FALSE> Reuse ordering from previous factorization (PCFactorSetReuseOrdering)
+ NONE PRECONDITIONED UNPRECONDITIONED NATURAL (KSPSetNormType)
+  -sub_pc_factor_mat_ordering_type <natural>: Reordering to reduce nonzeros in factored matrix (one of) natural nd 1wd rcm qmd  -sub_ksp_check_norm_iteration <-1>: First iteration to compute residual norm (KSPSetCheckNormIteration)
+ rowlength spectral (PCFactorSetMatOrderingType)
+  -sub_pc_factor_mat_solver_package <petsc>: Specific direct solver to use (MatGetFactor)
+  -sub_ksp_lag_norm: <FALSE> Lag the calculation of the residual norm (KSPSetLagNorm)
+  -sub_ksp_diagonal_scale: <FALSE> Diagonal scale matrix before building preconditioner (KSPSetDiagonalScale)
+  -sub_pc_factor_levels <0>: levels of fill (PCFactorSetLevels)
+  -sub_ksp_diagonal_scale_fix: <FALSE> Fix diagonally scaled matrix after solve (KSPSetDiagonalScaleFix)
+  -sub_pc_factor_diagonal_fill: <FALSE> Allow fill into empty diagonal entry (PCFactorSetAllowDiagonalFill)
+  -sub_ksp_constant_null_space: <FALSE> Add constant null space to Krylov solver (KSPSetNullSpace)
+  -sub_pc_factor_nonzeros_along_diagonal: Reorder to remove zeros from diagonal (PCFactorReorderForNonzeroDiagonal)
+  -sub_ksp_converged_reason: <FALSE> Print reason for converged or diverged (KSPSolve)
+  -sub_ksp_monitor_cancel: <FALSE> Remove any hardwired monitor routines (KSPMonitorCancel)
+Krylov Method (KSP) options -------------------------------------------------
+  -sub_ksp_monitor <stdout>: Monitor preconditioned residual norm (KSPMonitorSet)
+  -sub_ksp_monitor_range <stdout>: Monitor percent of residual entries more than 10 percent of max (KSPMonitorRange)
+  -sub_ksp_type <preonly>: Krylov method (one of) cg groppcg pipecg cgne  -sub_ksp_monitor_solution: <FALSE> Monitor solution graphically (KSPMonitorSet)
+ nash stcg gltr richardson
+       -sub_ksp_monitor_true_residual <stdout>: Monitor true residual norm (KSPMonitorSet)
+ chebyshev gmres tcqmr bcgs ibcgs fbcgs  -sub_ksp_monitor_max <stdout>: Monitor true residual max norm (KSPMonitorSet)
+ fbcgsr bcgsl cgs tfqmr cr  -sub_ksp_monitor_singular_value <stdout>: Monitor singular values (KSPMonitorSet)
+  -sub_ksp_monitor_short <stdout>: Monitor preconditioned residual norm with fewer digits (KSPMonitorSet)
+ pipecr lsqr preonly qcg bicg  -sub_ksp_monitor_python <(null)>: Use Python function (KSPMonitorSet)
+ fgmres minres symmlq lgmres lcd  -sub_ksp_monitor_lg_residualnorm: <FALSE> Monitor graphically preconditioned residual norm (KSPMonitorSet)
+ gcr pgmres specest dgmres  -sub_ksp_monitor_lg_true_residualnorm: <FALSE> Monitor graphically true residual norm (KSPMonitorSet)
+ (KSPSetType)
+  -sub_ksp_monitor_lg_range: <FALSE> Monitor graphically range of preconditioned residual norm (KSPMonitorSet)
+  -sub_ksp_max_it <10000>: Maximum number of iterations (KSPSetTolerances)
+  -sub_ksp_pc_side <LEFT> (choose one of)  -sub_ksp_rtol <1e-05>: Relative decrease in residual norm (KSPSetTolerances)
+ LEFT RIGHT SYMMETRIC (KSPSetPCSide)
+  -sub_ksp_atol <1e-50>: Absolute value of residual norm (KSPSetTolerances)
+  -sub_ksp_compute_singularvalues: <FALSE> Compute singular values of preconditioned operator (KSPSetComputeSingularValues)
+  -sub_ksp_divtol <10000>: Residual norm increase cause divergence (KSPSetTolerances)
+  -sub_ksp_compute_eigenvalues: <FALSE> Compute eigenvalues of preconditioned operator (KSPSetComputeSingularValues)
+  -sub_ksp_plot_eigenvalues: <FALSE> Scatter plot extreme eigenvalues (KSPSetComputeSingularValues)
+  -sub_ksp_converged_use_initial_residual_norm: <FALSE> Use initial residual residual norm for computing relative convergence (KSPConvergedDefaultSetUIRNorm)
+  -sub_ksp_converged_use_min_initial_residual_norm: <FALSE> Use minimum of initial residual norm and b for computing relative convergence (KSPConvergedDefaultSetUMIRNorm)
+  -sub_ksp_initial_guess_nonzero: <FALSE> Use the contents of the solution vector for initial guess (KSPSetInitialNonzero)
+  -sub_ksp_atol <1e-50>: Absolute value of residual norm (KSPSetTolerances)
+  -sub_ksp_divtol <10000>: Residual norm increase cause divergence (KSPSetTolerances)
+  -sub_ksp_converged_use_initial_residual_norm: <FALSE> Use initial residual residual norm for computing relative convergence (KSPConvergedDefaultSetUIRNorm)
+  -sub_ksp_converged_use_min_initial_residual_norm: <FALSE> Use minimum of initial residual norm and b for computing relative convergence (KSPConvergedDefaultSetUMIRNorm)
+  -sub_ksp_initial_guess_nonzero: <FALSE> Use the contents of the solution vector for initial guess (KSPSetInitialNonzero)
+  -sub_ksp_knoll: <FALSE> Use preconditioner applied to b for initial guess (KSPSetInitialGuessKnoll)
+  -sub_ksp_error_if_not_converged: <FALSE> Generate error if solver does not converge (KSPSetErrorIfNotConverged)
+  -sub_ksp_fischer_guess <0  -sub_ksp_knoll: <FALSE> Use preconditioner applied to b for initial guess (KSPSetInitialGuessKnoll)
+  -sub_ksp_error_if_not_converged: <FALSE> Generate error if solver does not converge (KSPSetErrorIfNotConverged)
+  -sub_ksp_fischer_guess <0>: Use Paul Fischer's algorithm for initial guess (KSPSetUseFischerGuess)
+  -sub_ksp_convergence_test <default> (choose one of)>: Use Paul Fischer's algorithm for initial guess (KSPSetUseFischerGuess)
+  -sub_ksp_convergence_test <default> (choose one of) default skip (KSPSetConvergenceTest)
+ default skip (KSPSetConvergenceTest)
+  -sub_ksp_norm_type <NONE> (choose one of)  -sub_ksp_norm_type <NONE> (choose one of) NONE PRECONDITIONED UNPRECONDITIONED NATURAL (KSPSetNormType)
+ NONE PRECONDITIONED UNPRECONDITIONED  -sub_ksp_check_norm_iteration <-1>: First iteration to compute residual norm (KSPSetCheckNormIteration)
+ NATURAL (KSPSetNormType)
+  -sub_ksp_check_norm_iteration <-1>: First iteration to compute residual norm (KSPSetCheckNormIteration)
+  -sub_ksp_lag_norm: <FALSE> Lag the calculation of the residual norm (KSPSetLagNorm)
+  -sub_ksp_lag_norm: <FALSE> Lag the calculation of the residual norm (KSPSetLagNorm)
+  -sub_ksp_diagonal_scale: <FALSE> Diagonal scale matrix before building preconditioner (KSPSetDiagonalScale)
+  -sub_ksp_diagonal_scale: <FALSE> Diagonal scale matrix before building preconditioner (KSPSetDiagonalScale)
+  -sub_ksp_diagonal_scale_fix: <FALSE> Fix diagonally scaled matrix after solve (KSPSetDiagonalScaleFix)
+  -sub_ksp_diagonal_scale_fix: <FALSE> Fix diagonally scaled matrix after solve (KSPSetDiagonalScaleFix)
+  -sub_ksp_constant_null_space: <FALSE> Add constant null space to Krylov solver (KSPSetNullSpace)
+  -sub_ksp_constant_null_space: <FALSE> Add constant null space to Krylov solver (KSPSetNullSpace)
+  -sub_ksp_converged_reason: <FALSE> Print reason for converged or diverged (KSPSolve)
+  -sub_ksp_monitor_cancel: <FALSE> Remove any hardwired monitor routines (KSPMonitorCancel)
+  -sub_ksp_monitor <stdout>: Monitor preconditioned residual norm (KSPMonitorSet)
+  -sub_ksp_converged_reason: <FALSE> Print reason for converged or diverged (KSPSolve)
+  -sub_ksp_monitor_cancel: <FALSE> Remove any hardwired monitor routines (KSPMonitorCancel)
+  -sub_ksp_monitor <stdout>: Monitor preconditioned residual norm (KSPMonitorSet)
+  -sub_ksp_monitor_range <stdout>: Monitor percent of residual entries more than 10 percent of max (KSPMonitorRange)
+  -sub_ksp_monitor_solution: <FALSE> Monitor solution graphically (KSPMonitorSet)
+  -sub_ksp_monitor_range <stdout>: Monitor percent of residual entries more than 10 percent of max (KSPMonitorRange)
+  -sub_ksp_monitor_solution: <FALSE> Monitor solution graphically (KSPMonitorSet)
+  -sub_ksp_monitor_true_residual <stdout>: Monitor true residual norm (KSPMonitorSet)
+  -sub_ksp_monitor_max <stdout>: Monitor true residual max norm (KSPMonitorSet)
+  -sub_ksp_monitor_singular_value <stdout>: Monitor singular values (KSPMonitorSet)
+Options for SEQAIJ matrix -------------------------------------------------
+  -sub_ksp_monitor_short <stdout>: Monitor preconditioned residual norm with fewer digits (KSPMonitorSet)
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+  -sub_ksp_monitor_python <(null)>: Use Python function (KSPMonitorSet)
+  -sub_ksp_monitor_lg_residualnorm: <FALSE> Monitor graphically preconditioned residual norm (KSPMonitorSet)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+  -sub_ksp_monitor_lg_true_residualnorm: <FALSE> Monitor graphically true residual norm (KSPMonitorSet)
+  -sub_ksp_monitor_lg_range: <FALSE> Monitor graphically range of preconditioned residual norm (KSPMonitorSet)
+  -sub_ksp_pc_side <LEFT> (choose one of)  -sub_ksp_monitor_true_residual <stdout>: Monitor true residual norm (KSPMonitorSet)
+  -sub_ksp_monitor_max <stdout>: Monitor true residual max norm (KSPMonitorSet)
+ LEFT RIGHT  -sub_ksp_monitor_singular_value <stdout>: Monitor singular values (KSPMonitorSet)
+ SYMMETRIC (KSPSetPCSide)
+  -sub_ksp_compute_singularvalues: <FALSE> Compute singular values of preconditioned operator (KSPSetComputeSingularValues)
+  -sub_ksp_compute_eigenvalues: <FALSE> Compute eigenvalues of preconditioned operator (KSPSetComputeSingularValues)
+  -sub_ksp_plot_eigenvalues: <FALSE> Scatter plot extreme eigenvalues (KSPSetComputeSingularValues)
+  -sub_ksp_monitor_short <stdout>: Monitor preconditioned residual norm with fewer digits (KSPMonitorSet)
+  -sub_ksp_monitor_python <(null)>: Use Python function (KSPMonitorSet)
+  -sub_ksp_monitor_lg_residualnorm: <FALSE> Monitor graphically preconditioned residual norm (KSPMonitorSet)
+  -sub_ksp_monitor_lg_true_residualnorm: <FALSE> Monitor graphically true residual norm (KSPMonitorSet)
+  -sub_ksp_monitor_lg_range: <FALSE> Monitor graphically range of preconditioned residual norm (KSPMonitorSet)
+  -sub_ksp_pc_side <LEFT> (choose one of) LEFT RIGHT SYMMETRIC (KSPSetPCSide)
+  -sub_ksp_compute_singularvalues: <FALSE> Compute singular values of preconditioned operator (KSPSetComputeSingularValues)
+  -sub_ksp_compute_eigenvalues: <FALSE> Compute eigenvalues of preconditioned operator (KSPSetComputeSingularValues)
+  -sub_ksp_plot_eigenvalues: <FALSE> Scatter plot extreme eigenvalues (KSPSetComputeSingularValues)
+  -sub_pc_type <ilu>: Preconditioner (one of) none jacobiOptions for SEQAIJ matrix -------------------------------------------------
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+ pbjacobi bjacobi sor lu shell mg
+      eisenstatOptions for SEQAIJ matrix -------------------------------------------------
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+ ilu icc cholesky asm gasm ksp composite redundant nn mat fieldsplit galerkin exotic cp lsc redistribute svd gamg kaczmarz tfs (PCSetType)
+  -sub_pc_use_amat: <FALSE> use Amat (instead of Pmat) to define preconditioner in nested inner solves (PCSetUseAmat)
+  ILU Options
+  -sub_pc_factor_in_place: <FALSE> Form factored matrix in the same memory as the matrix (PCFactorSetUseInPlace)
+  -sub_pc_factor_fill <1>: Expected non-zeros in factored matrix (PCFactorSetFill)
+  -sub_pc_factor_shift_type <INBLOCKS> (choose one of) NONE NONZERO POSITIVE_DEFINITE INBLOCKS (PCFactorSetShiftType)
+  -sub_pc_factor_shift_amount <2.22045e-14>: Shift added to diagonal (PCFactorSetShiftAmount)
+  -sub_pc_factor_zeropivot <2.22045e-14>: Pivot is considered zero if less than (PCFactorSetZeroPivot)
+  -sub_pc_factor_column_pivot <-2>: Column pivot tolerance (used only for some factorization) (PCFactorSetColumnPivot)
+  -sub_pc_factor_pivot_in_blocks: <TRUE> Pivot inside matrix dense blocks for BAIJ and SBAIJ (PCFactorSetPivotInBlocks)
+  -sub_pc_factor_reuse_fill: <FALSE> Use fill from previous factorization (PCFactorSetReuseFill)
+  -sub_pc_factor_reuse_ordering: <FALSE> Reuse ordering from previous factorization (PCFactorSetReuseOrdering)
+  -sub_pc_factor_mat_ordering_type <natural>: Reordering to reduce nonzeros in factored matrix (one of) natural nd 1wd rcm qmd rowlength spectral (PCFactorSetMatOrderingType)
+  -sub_pc_factor_mat_solver_package <petsc>: Specific direct solver to use (MatGetFactor)
+  -sub_pc_factor_levels <0>: levels of fill (PCFactorSetLevels)
+  -sub_pc_factor_diagonal_fill: <FALSE> Allow fill into empty diagonal entry (PCFactorSetAllowDiagonalFill)
+  -sub_pc_factor_nonzeros_along_diagonal: Reorder to remove zeros from diagonal (PCFactorReorderForNonzeroDiagonal)
+Krylov Method (KSP) options -------------------------------------------------
+  -sub_ksp_type <preonly>: Krylov method (one of) cg groppcg pipecg cgne nash stcg gltr richardson
+      chebyshev gmres tcqmr bcgs ibcgs fbcgs fbcgsr bcgsl cgs tfqmr cr pipecr lsqr preonly qcg bicg fgmres minres symmlq lgmres lcd gcr pgmres specest dgmres (KSPSetType)
+  -sub_ksp_max_it <10000>: Maximum number of iterations (KSPSetTolerances)
+  -sub_ksp_rtol <1e-05>: Relative decrease in residual norm (KSPSetTolerances)
+  -sub_ksp_atol <1e-50>: Absolute value of residual norm (KSPSetTolerances)
+  -sub_ksp_divtol <10000>: Residual norm increase cause divergence (KSPSetTolerances)
+  -sub_ksp_converged_use_initial_residual_norm: <FALSE> Use initial residual residual norm for computing relative convergence (KSPConvergedDefaultSetUIRNorm)
+  -sub_ksp_converged_use_min_initial_residual_norm: <FALSE> Use minimum of initial residual norm and b for computing relative convergence (KSPConvergedDefaultSetUMIRNorm)
+  -sub_ksp_initial_guess_nonzero: <FALSE> Use the contents of the solution vector for initial guess (KSPSetInitialNonzero)
+  -sub_ksp_knoll: <FALSE> Use preconditioner applied to b for initial guess (KSPSetInitialGuessKnoll)
+  -sub_ksp_error_if_not_converged: <FALSE> Generate error if solver does not converge (KSPSetErrorIfNotConverged)
+  -sub_ksp_fischer_guess <0>: Use Paul Fischer's algorithm for initial guess (KSPSetUseFischerGuess)
+  -sub_ksp_convergence_test <default> (choose one of) default skip (KSPSetConvergenceTest)
+  -sub_ksp_norm_type <NONE> (choose one of) NONE PRECONDITIONED UNPRECONDITIONED NATURAL (KSPSetNormType)
+  -sub_ksp_check_norm_iteration <-1>: First iteration to compute residual norm (KSPSetCheckNormIteration)
+  -sub_ksp_lag_norm: <FALSE> Lag the calculation of the residual norm (KSPSetLagNorm)
+  -sub_ksp_diagonal_scale: <FALSE> Diagonal scale matrix before building preconditioner (KSPSetDiagonalScale)
+  -sub_ksp_diagonal_scale_fix: <FALSE> Fix diagonally scaled matrix after solve (KSPSetDiagonalScaleFix)
+  -sub_ksp_constant_null_space: <FALSE> Add constant null space to Krylov solver (KSPSetNullSpace)
+  -sub_ksp_converged_reason: <FALSE> Print reason for converged or diverged (KSPSolve)
+  -sub_ksp_monitor_cancel: <FALSE> Remove any hardwired monitor routines (KSPMonitorCancel)
+  -sub_ksp_monitor <stdout>: Monitor preconditioned residual norm (KSPMonitorSet)
+  -sub_ksp_monitor_range <stdout>: Monitor percent of residual entries more than 10 percent of max (KSPMonitorRange)
+  -sub_ksp_monitor_solution: <FALSE> Monitor solution graphically (KSPMonitorSet)
+  -sub_ksp_monitor_true_residual <stdout>: Monitor true residual norm (KSPMonitorSet)
+  -sub_ksp_monitor_max <stdout>: Monitor true residual max norm (KSPMonitorSet)
+  -sub_ksp_monitor_singular_value <stdout>: Monitor singular values (KSPMonitorSet)
+  -sub_ksp_monitor_short <stdout>: Monitor preconditioned residual norm with fewer digits (KSPMonitorSet)
+  -sub_ksp_monitor_python <(null)>: Use Python function (KSPMonitorSet)
+  -sub_ksp_monitor_lg_residualnorm: <FALSE> Monitor graphically preconditioned residual norm (KSPMonitorSet)
+  -sub_ksp_monitor_lg_true_residualnorm: <FALSE> Monitor graphically true residual norm (KSPMonitorSet)
+  -sub_ksp_monitor_lg_range: <FALSE> Monitor graphically range of preconditioned residual norm (KSPMonitorSet)
+  -sub_ksp_pc_side <LEFT> (choose one of) LEFT RIGHT SYMMETRIC (KSPSetPCSide)
+  -sub_ksp_compute_singularvalues: <FALSE> Compute singular values of preconditioned operator (KSPSetComputeSingularValues)
+  -sub_ksp_compute_eigenvalues: <FALSE> Compute eigenvalues of preconditioned operator (KSPSetComputeSingularValues)
+  -sub_ksp_plot_eigenvalues: <FALSE> Scatter plot extreme eigenvalues (KSPSetComputeSingularValues)
+Options for SEQAIJ matrix -------------------------------------------------
+  -mat_no_unroll: <FALSE> Do not optimize for inodes (slower) (None)
+  -mat_no_inode: <FALSE> Do not optimize for inodes -slower- (None)
+  -mat_inode_limit <5>: Do not use inodes larger then this value (None)
+    1 SNES Function norm 2.752570296040e+00 
+    2 SNES Function norm 1.339165338950e-02 
+    3 SNES Function norm 1.908209861757e-07 
+  1  time   0.1171  |x|    2.553  
+    0 SNES Function norm 4.223320956626e+01 
+    1 SNES Function norm 1.465303801600e+00 
+    2 SNES Function norm 1.294315353825e-03 
+    3 SNES Function norm 4.359798579641e-09 
+  2  time   0.2342  |x|    2.216  
+    0 SNES Function norm 2.528595572844e+01 
+    1 SNES Function norm 1.007533190720e+00 
+    2 SNES Function norm 7.959471307793e-04 
+    3 SNES Function norm 9.433228553592e-09 
+  3  time   0.3513  |x|    1.918  
+    0 SNES Function norm 1.829266706640e+01 
+    1 SNES Function norm 5.210630532966e-01 
+    2 SNES Function norm 1.928073073744e-04 
+    3 SNES Function norm 1.967985788438e-09 
+  4  time   0.4684  |x|    1.767  
+    0 SNES Function norm 1.584126765660e+01 
+    1 SNES Function norm 2.487416386804e-01 
+    2 SNES Function norm 6.072844756503e-05 
+    3 SNES Function norm 4.276115929142e-10 
+  5  time   0.5855  |x|    1.708  
+    0 SNES Function norm 1.500940719893e+01 
+    1 SNES Function norm 2.897325865171e-01 
+    2 SNES Function norm 1.289302771585e-04 
+    3 SNES Function norm 8.801643827624e-10 
+  6  time   0.7026  |x|    1.732  
+    0 SNES Function norm 1.436026422896e+01 
+    1 SNES Function norm 3.360365757005e-01 
+    2 SNES Function norm 2.539126291949e-04 
+    3 SNES Function norm 1.489338443510e-09 
+  7  time   0.8197  |x|    1.764  
+    0 SNES Function norm 1.324968959747e+01 
+    1 SNES Function norm 2.680527595809e-01 
+    2 SNES Function norm 1.003406509653e-04 
+    3 SNES Function norm 9.053349656452e-10 
+  8  time   0.9368  |x|    1.761  
+    0 SNES Function norm 1.159326898344e+01 
+    1 SNES Function norm 1.797500890463e-01 
+    2 SNES Function norm 4.919881572291e-05 
+    3 SNES Function norm 4.076566445539e-10 
+  9  time    1.054  |x|    1.734  
+    0 SNES Function norm 9.574413752583e+00 
+    1 SNES Function norm 1.105217927188e-01 
+    2 SNES Function norm 2.138844435432e-04 
+    3 SNES Function norm 6.042509773325e-10 
+ 10  time    1.171  |x|    1.696  
+    0 SNES Function norm 7.462508224364e+00 
+    1 SNES Function norm 5.647125788061e-02 
+    2 SNES Function norm 1.194425858575e-05 
+    3 SNES Function norm 3.407963606436e-11 
+ 11  time    1.288  |x|    1.664  
+    0 SNES Function norm 5.592243144501e+00 
+    1 SNES Function norm 4.733066375979e-02 
+    2 SNES Function norm 3.416091024798e-06 
+    3 SNES Function norm 8.570548979518e-12 
+ 12  time    1.405  |x|    1.633  
+    0 SNES Function norm 4.308274578471e+00 
+    1 SNES Function norm 2.968941685917e-02 
+    2 SNES Function norm 9.926916775638e-07 
+    3 SNES Function norm 2.787461820655e-12 
+ 13  time    1.522  |x|    1.604  
+    0 SNES Function norm 3.729989296512e+00 
+    1 SNES Function norm 1.859961090148e-02 
+    2 SNES Function norm 4.136658568240e-07 
+    3 SNES Function norm 1.373394430426e-12 
+ 14  time    1.639  |x|    1.608  
+    0 SNES Function norm 3.566965113645e+00 
+    1 SNES Function norm 1.903654468407e-02 
+    2 SNES Function norm 9.346914222173e-07 
+    3 SNES Function norm 5.445751805431e-12 
+ 15  time    1.756  |x|    1.615  
+    0 SNES Function norm 3.440517506643e+00 
+    1 SNES Function norm 1.710326197341e-02 
+    2 SNES Function norm 4.773719507992e-07 
+    3 SNES Function norm 3.478193748164e-12 
+ 16  time    1.874  |x|    1.614  
+    0 SNES Function norm 3.180690615999e+00 
+    1 SNES Function norm 1.498334802644e-02 
+    2 SNES Function norm 4.061635800070e-07 
+    3 SNES Function norm 3.686203190064e-12 
+ 17  time    1.991  |x|    1.605  
+    0 SNES Function norm 2.784414174949e+00 
+    1 SNES Function norm 1.022177717744e-02 
+    2 SNES Function norm 1.999695459714e-07 
+    3 SNES Function norm 1.319178341190e-12 
+ 18  time    2.108  |x|    1.592  
+CONVERGED_TIME at time 2.10772 after 18 steps
