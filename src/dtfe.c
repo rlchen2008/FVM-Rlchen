@@ -575,7 +575,7 @@ PetscErrorCode PetscSpaceGetDimension_Polynomial(PetscSpace sp, PetscInt *dim)
 
   Level: developer
 
-.seealso: 
+.seealso:
 */
 static PetscErrorCode LatticePoint_Internal(PetscInt len, PetscInt sum, PetscInt ind[], PetscInt tup[])
 {
@@ -615,7 +615,7 @@ static PetscErrorCode LatticePoint_Internal(PetscInt len, PetscInt sum, PetscInt
 
   Level: developer
 
-.seealso: 
+.seealso:
 */
 static PetscErrorCode TensorPoint_Internal(PetscInt len, PetscInt max, PetscInt ind[], PetscInt tup[])
 {

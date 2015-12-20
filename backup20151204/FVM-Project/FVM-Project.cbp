@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="FVM-Project" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="Release">
+				<Option output="bin/Release/FVM-Project" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/Release/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-O2" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+		</Compiler>
+		<Unit filename="../AeroSim.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../AeroSim.h" />
+		<Unit filename="main.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../Functions.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../SetupFunctions.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../SetupJacobian.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../SetupMeshes.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../makefile" />
+		<Unit filename="../src/dm.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/dmlocalsnes.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/dmpleximpl.h" />
+		<Unit filename="../src/dmplexts.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/dtfe.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/dtfv.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/isimpl.h" />
+		<Unit filename="../src/petscfv.h" />
+		<Unit filename="../src/petscfvtypes.h" />
+		<Unit filename="../src/petscviewer.h" />
+		<Unit filename="../src/plex.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/plexdistribute.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/plexexodusii.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/plexfem.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/plexgeometry.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/plexlabel.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/plexsubmesh.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/plexvtk.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/vsectionis.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="../src/vtkv.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Extensions>
+			<code_completion />
+			<envvars />
+			<lib_finder disable_auto="1" />
+			<debugger />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>

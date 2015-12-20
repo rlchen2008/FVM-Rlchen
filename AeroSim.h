@@ -2,6 +2,7 @@
 #define DIM 3                   /* Geometric dimension */
 #define EXPLICITMETHOD 0        /*explicit method for the time integral*/
 #define IMPLICITMETHOD 1        /*implicit method for the time integral*/
+#define MYTOLERANCE 1.e-12        /* The tolerance for a nonzero number, that is if abs(f)<MYTOLERANCE, then let f = 0.0  */
 
 /* time step specification */
 #define TIMESTEP_STEADY_STATE 0
@@ -27,11 +28,11 @@ typedef struct _n_User *User;
 /*Algebra implements the vectors, matrice used in the solution*/
 typedef struct _n_Algebra *Algebra;
 
-typedef PetscErrorCode (*RiemannFunction)(Physics,const PetscReal*,const PetscReal*,const PetscScalar*,const PetscScalar*,PetscScalar*);
-typedef PetscErrorCode (*SolutionFunction)(Model,PetscReal,const PetscReal*,PetscScalar*,void*);
-typedef PetscErrorCode (*FunctionalFunction)(Model,PetscReal,const PetscReal*,const PetscScalar*,PetscReal*,void*);
+typedef PetscErrorCode (*RiemannFunction)(Physics,const PetscReal*,const PetscReal*,const PetscReal*,const PetscReal*,PetscReal*);
+typedef PetscErrorCode (*SolutionFunction)(Model,PetscReal,const PetscReal*,PetscReal*,void*);
+typedef PetscErrorCode (*FunctionalFunction)(Model,PetscReal,const PetscReal*,const PetscReal*,PetscReal*,void*);
 typedef PetscErrorCode (*SetupFields)(Physics,PetscSection);
-typedef PetscErrorCode (*BoundaryFunction)(Model,PetscReal,const PetscReal*,const PetscReal*,const PetscScalar*,PetscScalar*,void*);
+typedef PetscErrorCode (*BoundaryFunction)(Model,PetscReal,const PetscReal*,const PetscReal*,const PetscReal*,PetscReal*,void*);
 
 
 struct FieldDescription {
@@ -104,10 +105,12 @@ struct _n_User {
   PetscBool      Euler; /*Use Euler equation*/
   char           solutionfile[PETSC_MAX_PATH_LEN];/*the file name for the solution output*/
   PetscInt       steps_output; /* the number of time steps between two outputs */
+  char           RiemannSolver[PETSC_MAX_PATH_LEN];
+  PetscReal      CFL; // The Courant number coefficient
   struct {
-    PetscScalar *flux;
-    PetscScalar *state0;
-    PetscScalar *state1;
+    PetscReal *flux;
+    PetscReal *state0;
+    PetscReal *state1;
   } work;
 };
 
@@ -130,11 +133,11 @@ struct _n_Algebra {
 };
 
 typedef struct {
-  PetscScalar vals[0];
+  PetscReal vals[0];
   /*Zero-length array,just like a pointer and vals[0] points to r, vals[1] points to u[0], ...*/
-  PetscScalar r; /*the density \rho*/
-  PetscScalar ru[DIM]; /*the density momontum u*/
-  PetscScalar rE; /*the density total energy, that is the total energy in per unit volume*/
+  PetscReal r; /*the density \rho*/
+  PetscReal ru[DIM]; /*the density momontum u*/
+  PetscReal rE; /*the density total energy, that is the total energy in per unit volume*/
 } Node;
 
 static const struct FieldDescription PhysicsFields_Euler[] = {{"Density",1},{"Momentum",DIM},{"Energy",1},{NULL,0}};
@@ -146,30 +149,32 @@ extern PetscErrorCode ModelFunctionalRegister(Model,const char*,PetscInt*,Functi
 extern PetscErrorCode OutputVTK(DM,const char*,PetscViewer*);
 extern PetscErrorCode CreatePartitionVec(DM dm, DM *dmCell, Vec *partition);
 extern PetscErrorCode ConstructGeometry(DM dm, Vec *facegeom, Vec *cellgeom, User user);
-extern PetscErrorCode BuildLeastSquares(DM dm,PetscInt cEndInterior,DM dmFace,PetscScalar *fgeom,DM dmCell,PetscScalar *cgeom);
+extern PetscErrorCode BuildLeastSquares(DM dm,PetscInt cEndInterior,DM dmFace,PetscReal *fgeom,DM dmCell,PetscReal *cgeom);
 extern PetscErrorCode PseudoInverseGetWorkRequired(PetscInt maxFaces,PetscInt *work);
 extern PetscErrorCode IsExteriorGhostFace(DM dm,PetscInt face,PetscBool *isghost);
-extern PetscErrorCode PseudoInverseSVD(PetscInt m,PetscInt mstride,PetscInt n,PetscScalar *A,PetscScalar *Ainv,PetscScalar *tau,PetscInt worksize,PetscScalar *work);
-extern PetscErrorCode PseudoInverse(PetscInt m,PetscInt mstride,PetscInt n,PetscScalar *A,PetscScalar *Ainv,PetscScalar *tau,PetscInt worksize,PetscScalar *work);
+extern PetscErrorCode PseudoInverseSVD(PetscInt m,PetscInt mstride,PetscInt n,PetscReal *A,PetscReal *Ainv,PetscReal *tau,PetscInt worksize,PetscReal *work);
+extern PetscErrorCode PetscFVLeastSquaresPseudoInverse_Static(PetscInt m,PetscInt mstride,PetscInt n,PetscScalar *A,PetscScalar *Ainv,PetscScalar *tau,PetscInt worksize,PetscScalar *work);
+extern PetscErrorCode PetscFVLeastSquaresPseudoInverseSVD_Static(PetscInt m,PetscInt mstride,PetscInt n,PetscScalar *A,PetscScalar *Ainv,PetscScalar *tau,PetscInt worksize,PetscScalar *work);
+extern PetscErrorCode PseudoInverse(PetscInt m,PetscInt mstride,PetscInt n,PetscReal *A,PetscReal *Ainv,PetscReal *tau,PetscInt worksize,PetscReal *work);
 extern PetscErrorCode ConstructGeometryFVM(Vec *facegeom, Vec *cellgeom, User user);
 extern PetscErrorCode CreateMesh(MPI_Comm comm, User user);
 extern PetscErrorCode LoadOptions(MPI_Comm comm, User user);
 extern PetscErrorCode SetUpLocalSpace(User user);
 extern PetscErrorCode SetInitialCondition(DM dm, Vec X, User user);
-extern PetscErrorCode Pressure_PG(User user,const Node *x,PetscScalar *p);
-extern PetscErrorCode SpeedOfSound_PG(User user,const Node *x,PetscScalar *c);
+extern PetscErrorCode Pressure_PG(User user,const Node *x,PetscReal *p);
+extern PetscErrorCode SpeedOfSound_PG(User user,const Node *x,PetscReal *c);
 extern PetscErrorCode ConvectionFlux(User user,const PetscReal *n,const Node *x,Node *f);
 extern PetscErrorCode DiffusionFlux(User user, const PetscReal *cgradL, const PetscReal *cgradR, const PetscReal *fgc,
                                      const PetscReal *cgcL, const PetscReal *cgcR,
                                      const PetscReal *n, const Node *xL, const Node *xR, Node *f);
-extern PetscErrorCode RiemannSolver_Rusanov(User user, const PetscScalar *cgradL, const PetscScalar *cgradR,
+extern PetscErrorCode RiemannSolver(User user, const PetscReal *cgradL, const PetscReal *cgradR,
                                              const PetscReal *fgc, const PetscReal *cgcL, const
-                                             PetscReal *cgcR, const PetscReal *n, const PetscScalar *xL, const PetscScalar *xR,
-                                             PetscScalar *fluxcon, PetscScalar *fluxdiff);
-extern PetscErrorCode RiemannSolver_Rusanov_Jacobian(User user, const PetscScalar *cgradL, const PetscScalar *cgradR,
+                                             PetscReal *cgcR, const PetscReal *n, const PetscReal *xL, const PetscReal *xR,
+                                             PetscReal *fluxcon, PetscReal *fluxdiff);
+extern PetscErrorCode RiemannSolver_Rusanov_Jacobian(User user, const PetscReal *cgradL, const PetscReal *cgradR,
                                              const PetscReal *fgc, const PetscReal *cgcL, const
-                                             PetscReal *cgcR, const PetscReal *n, const PetscScalar *xL, const PetscScalar *xR,
-                                             PetscScalar *fluxcon, PetscScalar *fluxdiff);
+                                             PetscReal *cgcR, const PetscReal *n, const PetscReal *xL, const PetscReal *xR,
+                                             PetscReal *fluxcon, PetscReal *fluxdiff);
 extern PetscErrorCode ModelFunctionalRegister(Model mod,const char *name,PetscInt *offset,FunctionalFunction func,void *ctx);
 extern PetscErrorCode MonitorVTK(TS ts,PetscInt stepnum,PetscReal time,Vec X,void *ctx);
 extern PetscErrorCode ModelBoundaryFind(Model mod,PetscInt id,BoundaryFunction *bcFunc,void **ctx);
@@ -179,52 +184,52 @@ extern PetscErrorCode FormTimeStepFunction(User user, Algebra algebra, Vec in, V
 extern PetscErrorCode MyRHSFunction(TS ts,PetscReal time,Vec in,Vec out,void *ctx);
 extern PetscErrorCode FormMassTimeStepFunction(User user, Algebra algebra, Vec in, Vec out, PetscBool rebuild);
 extern PetscErrorCode FormJacobian(SNES snes, Vec g, Mat jac, Mat B, void *ctx);
-extern PetscErrorCode InitialCondition(PetscReal time, const PetscReal *x, PetscScalar *u, User user);
+extern PetscErrorCode InitialCondition(PetscReal time, const PetscReal *x, PetscReal *u, User user);
 extern PetscErrorCode SolveSteadyState(void* ctx);
 extern PetscErrorCode SolveTimeDependent(void* ctx);
 extern PetscErrorCode CaculateLocalMassFunction(DM dm,Vec locX,Vec F,User user);
 extern PetscErrorCode CaculateLocalFunction_LS(DM dm,DM dmFace,DM dmCell,PetscReal time,Vec locX,Vec F,User user);
 extern PetscErrorCode CaculateLocalFunction_Upwind(DM dm,DM dmFace,DM dmCell,PetscReal time,Vec locX,Vec F,User user);
 extern PetscErrorCode LimiterSetup(User user);
-extern PetscErrorCode Pressure_Full(User user,const Node *x,PetscScalar *p);
-extern PetscErrorCode Pressure_Partial(User user,const Node *x,PetscScalar *p);
-extern PetscErrorCode Energy(User user,const Node *x,PetscScalar *e);
+extern PetscErrorCode Pressure_Full(User user,const Node *x,PetscReal *p);
+extern PetscErrorCode Pressure_Partial(User user,const Node *x,PetscReal *p);
+extern PetscErrorCode Energy(User user,const Node *x,PetscReal *e);
 extern PetscErrorCode ConstructCellCentriodGradient(DM dm,DM dmFace,DM dmCell,PetscReal time,Vec locX,Vec F,User user);
 extern PetscErrorCode MonitorFunction(SNES snes, PetscInt its, double norm, void *dctx);
 extern PetscErrorCode BoundaryInflow(PetscReal time, const PetscReal *c, const PetscReal *n,
-                                      const PetscScalar *xI, PetscScalar *xG, User user);
+                                      const PetscReal *xI, PetscReal *xG, User user);
 extern PetscErrorCode BoundaryOutflow(PetscReal time, const PetscReal *c, const PetscReal *n,
-                                      const PetscScalar *xI, PetscScalar *xG, User user);
+                                      const PetscReal *xI, PetscReal *xG, User user);
 extern PetscErrorCode BoundaryWallflow(PetscReal time, const PetscReal *c, const PetscReal *n,
-                                       const PetscScalar *xI, PetscScalar *xG, User user);
+                                       const PetscReal *xI, PetscReal *xG, User user);
 extern PetscErrorCode SetupJacobian(DM dm, Vec X, Mat jac, Mat B, void *ctx);
-extern PetscErrorCode ComputeJacobian_LS(DM dm, Vec locX, PetscInt cell, PetscScalar CellValues[], void *ctx);
-extern PetscErrorCode ComputeJacobian_Upwind(DM dm, Vec locX, PetscInt cell, PetscScalar CellValues[], void *ctx);
-extern PetscErrorCode GradientGradientJacobian(DM dm, Vec locX, PetscScalar elemMat[], void *ctx);
+extern PetscErrorCode ComputeJacobian_LS(DM dm, Vec locX, PetscInt cell, PetscReal CellValues[], void *ctx);
+extern PetscErrorCode ComputeJacobian_Upwind(DM dm, Vec locX, PetscInt cell, PetscReal CellValues[], void *ctx);
+extern PetscErrorCode GradientGradientJacobian(DM dm, Vec locX, PetscReal elemMat[], void *ctx);
 extern PetscErrorCode DMPlexGetIndex(DM dm, PetscSection section, PetscSection globalSection,
                                       PetscInt point, PetscInt *NumOfIndices, PetscInt indices[]);
-extern PetscErrorCode ConstructCellCentriodGradientJacobian(DM dm,DM dmFace,DM dmCell,PetscReal time,Vec locX, PetscInt cell, PetscScalar CellValues[],User user);
+extern PetscErrorCode ConstructCellCentriodGradientJacobian(DM dm,DM dmFace,DM dmCell,PetscReal time,Vec locX, PetscInt cell, PetscReal CellValues[],User user);
 extern PetscErrorCode CaculateLocalSourceTerm(DM dm, Vec locX, Vec F, User user);
 
-extern PetscScalar DotDIM(const PetscScalar *x,const PetscScalar *y);
-extern PetscReal NormDIM(const PetscScalar *x);
-extern void axDIM(const PetscScalar a,PetscScalar *x);
-extern void waxDIM(const PetscScalar a,const PetscScalar *x, PetscScalar *w);
-extern void NormalSplitDIM(const PetscReal *n,const PetscScalar *x,PetscScalar *xn,PetscScalar *xt);
-extern PetscScalar Dot2(const PetscScalar *x,const PetscScalar *y);
-extern PetscReal Norm2(const PetscScalar *x);
-extern void Normalize2(PetscScalar *x);
-extern void Waxpy2(PetscScalar a,const PetscScalar *x,const PetscScalar *y,PetscScalar *w);
-extern void Scale2(PetscScalar a,const PetscScalar *x,PetscScalar *y);
-extern void WaxpyD(PetscInt dim, PetscScalar a, const PetscScalar *x, const PetscScalar *y, PetscScalar *w);
-extern PetscScalar DotD(PetscInt dim, const PetscScalar *x, const PetscScalar *y);
-extern PetscReal NormD(PetscInt dim, const PetscScalar *x);
-extern void NormalSplit(const PetscReal *n,const PetscScalar *x,PetscScalar *xn,PetscScalar *xt);
-extern PetscReal SourceRho(User user, const PetscScalar *cgrad, const PetscScalar *x, const PetscReal *xcoord);
-extern PetscReal SourceU(User user, const PetscScalar *cgrad, const PetscScalar *x, const PetscReal *xcoord);
-extern PetscReal SourceV(User user, const PetscScalar *cgrad, const PetscScalar *x, const PetscReal *xcoord);
-extern PetscReal SourceW(User user, const PetscScalar *cgrad, const PetscScalar *x, const PetscReal *xcoord);
-extern PetscReal SourceE(User user, const PetscScalar *cgrad, const PetscScalar *x, const PetscReal *xcoord);
+extern PetscReal DotDIM(const PetscReal *x,const PetscReal *y);
+extern PetscReal NormDIM(const PetscReal *x);
+extern void axDIM(const PetscReal a,PetscReal *x);
+extern void waxDIM(const PetscReal a,const PetscReal *x, PetscReal *w);
+extern void NormalSplitDIM(const PetscReal *n,const PetscReal *x,PetscReal *xn,PetscReal *xt);
+extern PetscReal Dot2(const PetscReal *x,const PetscReal *y);
+extern PetscReal Norm2(const PetscReal *x);
+extern void Normalize2(PetscReal *x);
+extern void Waxpy2(PetscReal a,const PetscReal *x,const PetscReal *y,PetscReal *w);
+extern void Scale2(PetscReal a,const PetscReal *x,PetscReal *y);
+extern void WaxpyD(PetscInt dim, PetscReal a, const PetscReal *x, const PetscReal *y, PetscReal *w);
+extern PetscReal DotD(PetscInt dim, const PetscReal *x, const PetscReal *y);
+extern PetscReal NormD(PetscInt dim, const PetscReal *x);
+extern void NormalSplit(const PetscReal *n,const PetscReal *x,PetscReal *xn,PetscReal *xt);
+extern PetscReal SourceRho(User user, const PetscReal *cgrad, const PetscReal *x, const PetscReal *xcoord);
+extern PetscReal SourceU(User user, const PetscReal *cgrad, const PetscReal *x, const PetscReal *xcoord);
+extern PetscReal SourceV(User user, const PetscReal *cgrad, const PetscReal *x, const PetscReal *xcoord);
+extern PetscReal SourceW(User user, const PetscReal *cgrad, const PetscReal *x, const PetscReal *xcoord);
+extern PetscReal SourceE(User user, const PetscReal *cgrad, const PetscReal *x, const PetscReal *xcoord);
 
 extern PetscReal Limit_Zero(PetscReal f);
 extern PetscReal Limit_None(PetscReal f);
@@ -246,4 +251,5 @@ extern PetscReal Limit_MCGrad(PetscReal f);
 
 extern PetscErrorCode  TSMonitorFunctionError(TS ts,PetscInt step,PetscReal ptime,Vec u,void *ctx);
 extern PetscErrorCode ComputeExactSolution(DM dm, PetscReal time, Vec locX, User user);
-extern PetscErrorCode ExactSolution(PetscReal time, const PetscReal *c, PetscScalar *xc, User user);
+extern PetscErrorCode ExactSolution(PetscReal time, const PetscReal *c, PetscReal *xc, User user);
+extern PetscErrorCode ReformatSolution(Vec solution, Vec solution_unscaled, User user);

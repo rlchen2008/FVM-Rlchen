@@ -106,6 +106,12 @@ int main(int argc, char **argv)
 
         user->current_time = user->current_time + user->dt;
         ierr = FormTimeStepFunction(user, algebra, algebra->solution, algebra->fn);CHKERRQ(ierr);
+        if(0){
+            PetscViewer    viewer;
+            ierr = OutputVTK(user->dm, "function.vtk", &viewer);CHKERRQ(ierr);
+            ierr = VecView(algebra->fn, viewer);CHKERRQ(ierr);
+            ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+          }
 
         if(user->Explicit_RK2){
         /*
@@ -201,15 +207,6 @@ int main(int argc, char **argv)
           PetscReal fnnorm;
           ierr = VecNorm(algebra->fn,NORM_2,&fnnorm);CHKERRQ(ierr);
           //ierr = VecView(algebra->fn, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
-          if(0){
-            PetscViewer    viewer;
-            ierr = OutputVTK(user->dm, "function.vtk", &viewer);CHKERRQ(ierr);
-            ierr = VecView(algebra->fn, viewer);CHKERRQ(ierr);
-            ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
-            ierr = PetscPrintf(PETSC_COMM_WORLD,"Step %D at time %g with founction norm = %g \n",
-                                user->current_step, user->current_time, fnnorm);CHKERRQ(ierr);
-            //break;
-          }
 
           ierr = VecNorm(algebra->solution,NORM_2,&norm);CHKERRQ(ierr);
           ierr = VecGetSize(algebra->solution, &size);CHKERRQ(ierr);
@@ -238,19 +235,29 @@ int main(int argc, char **argv)
             ierr = PetscPrintf(PETSC_COMM_WORLD,"Step %D at time %g with ||u_k-u_{k-1}|| = %g \n",
                               user->current_step, user->current_time, norm);CHKERRQ(ierr);
           }
-          if((norm<1.e-6)||(user->current_step > user->max_time_its)) break;
+          if((norm<1.e-6)||(user->current_step > user->max_time_its)){
+            if(norm<1.e-6) ierr = PetscPrintf(PETSC_COMM_WORLD,"\n Convergence with ||u_k-u_{k-1}|| = %g < 1.e-6\n\n", norm);CHKERRQ(ierr);
+            if(user->current_step > user->max_time_its) ierr = PetscPrintf(PETSC_COMM_WORLD,"\n Convergence with reaching the max time its\n\n");CHKERRQ(ierr);
+            break;
+          }
         }
 
         // output the solution
         if (user->output_solution && (user->current_step%user->steps_output==0)){
           PetscViewer    viewer;
+          Vec            solution_unscaled; // Note the the algebra->solution is scaled by the density, so this is for the unscaled solution
 
           nplot = user->current_step/user->steps_output;
           // update file name for the current time step
+          ierr = VecDuplicate(algebra->solution, &solution_unscaled);CHKERRQ(ierr);
+
+          ierr = ReformatSolution(algebra->solution, solution_unscaled, user);CHKERRQ(ierr);
+
           ierr = PetscSNPrintf(fileName, sizeof(fileName),"%s_%d.vtk",user->solutionfile, nplot);CHKERRQ(ierr);
-          ierr = PetscPrintf(PETSC_COMM_WORLD,"Outputing solution %s (current time %f)\n", fileName, user->current_time);CHKERRQ(ierr);
+          ierr = PetscPrintf(PETSC_COMM_WORLD,"Outputing solution %s (current step %d, time %f)\n", fileName, user->current_step, user->current_time);CHKERRQ(ierr);
           ierr = OutputVTK(user->dm, fileName, &viewer);CHKERRQ(ierr);
-          ierr = VecView(algebra->solution, viewer);CHKERRQ(ierr);
+          ierr = VecView(solution_unscaled, viewer);CHKERRQ(ierr);
+          ierr = VecDestroy(&solution_unscaled);CHKERRQ(ierr);
           ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
         }
 
@@ -264,6 +271,10 @@ int main(int argc, char **argv)
       TS                ts;
       TSConvergedReason reason;
       PetscInt          nsteps;
+      //PetscReal         minRadius;
+
+      //ierr = DMPlexTSGetGeometry(user->dm, NULL, NULL, &minRadius);CHKERRQ(ierr);
+      //user->dt  = 0.9*4 * user->minradius / 1.0;
 
       ierr = PetscPrintf(PETSC_COMM_WORLD,"Using the fully explicit method based on the PETSC TS routing\n");CHKERRQ(ierr);
       ierr = DMCreateGlobalVector(user->dm, &algebra->solution);CHKERRQ(ierr);
@@ -275,6 +286,7 @@ int main(int argc, char **argv)
       ierr = TSSetDM(ts, user->dm);CHKERRQ(ierr);
       ierr = TSMonitorSet(ts,TSMonitorFunctionError,(void*)user,NULL);CHKERRQ(ierr);
       ierr = TSSetRHSFunction(ts, NULL, MyRHSFunction, user);CHKERRQ(ierr);
+      //ierr = DMPlexTSSetRHSFunctionLocal(user->dm, RiemannSolver, user);CHKERRQ(ierr);
       ierr = TSSetDuration(ts, 1000, user->final_time);CHKERRQ(ierr);
       ierr = TSSetInitialTimeStep(ts, user->initial_time, user->dt);CHKERRQ(ierr);
       ierr = TSSetFromOptions(ts);CHKERRQ(ierr);
@@ -289,7 +301,7 @@ int main(int argc, char **argv)
 
     if(user->benchmark_couette) {
       ierr = DMCreateGlobalVector(user->dm, &algebra->exactsolution);CHKERRQ(ierr);
-      ierr = ComputeExactSolution(user->dm, user->final_time, algebra->exactsolution, user);CHKERRQ(ierr);
+      ierr = ComputeExactSolution(user->dm, user->current_time, algebra->exactsolution, user);CHKERRQ(ierr);
     }
 
     if(user->benchmark_couette) {
@@ -302,7 +314,7 @@ int main(int argc, char **argv)
 
       ierr = VecAXPY(algebra->exactsolution, -1, algebra->solution);CHKERRQ(ierr);
       ierr = VecNorm(algebra->exactsolution,NORM_INFINITY,&norm);CHKERRQ(ierr);
-      ierr = PetscPrintf(PETSC_COMM_WORLD,"Final time at %f, Error: ||u_k-u|| = %g \n", user->final_time, norm);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD,"Final time at %f, Error: ||u_k-u|| = %g \n", user->current_time, norm);CHKERRQ(ierr);
 
       ierr = OutputVTK(user->dm, "Error.vtk", &viewer);CHKERRQ(ierr);
       ierr = VecView(algebra->exactsolution, viewer);CHKERRQ(ierr);
@@ -325,6 +337,7 @@ int main(int argc, char **argv)
     ierr = VecDuplicate(algebra->solution, &algebra->oldfn);CHKERRQ(ierr);
 
     ierr = PetscObjectSetName((PetscObject) algebra->solution, "solution");CHKERRQ(ierr);
+    ierr = VecSet(algebra->solution, 0.0);CHKERRQ(ierr);
     ierr = SetInitialCondition(user->dm, algebra->solution, user);CHKERRQ(ierr);
 
     ierr = DMSetMatType(user->dm, MATAIJ);CHKERRQ(ierr);
@@ -336,7 +349,13 @@ int main(int argc, char **argv)
     }else{
      algebra->P = algebra->J;
     }
-
+/*
+    {
+      PetscInt row, col;
+      ierr = MatGetSize(algebra->J, &row, &col);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD, "Jacobian Matrix size row %d, col %d\n", row, col);CHKERRQ(ierr);
+    }
+*/
     ierr = MatSetOption(algebra->J, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);CHKERRQ(ierr);
 
     /*set nonlinear function */
@@ -355,14 +374,22 @@ int main(int argc, char **argv)
 
     if (user->output_solution){
       PetscViewer    viewer;
+      Vec            solution_unscaled; // Note the the algebra->solution is scaled by the density, so this is for the unscaled solution
+
+      ierr = VecDuplicate(algebra->solution, &solution_unscaled);CHKERRQ(ierr);
+      //ierr = ReformatSolution(algebra->solution, solution_unscaled, user);CHKERRQ(ierr);
       ierr = OutputVTK(user->dm, "solution.vtk", &viewer);CHKERRQ(ierr);
-      ierr = VecView(algebra->solution, viewer);CHKERRQ(ierr);
+      ierr = VecView(solution_unscaled, viewer);CHKERRQ(ierr);
+      ierr = VecDestroy(&solution_unscaled);CHKERRQ(ierr);
       ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
     }
 
     if(user->benchmark_couette) {
       PetscViewer    viewer;
       PetscReal      norm;
+
+      ierr = DMCreateGlobalVector(user->dm, &algebra->exactsolution);CHKERRQ(ierr);
+      ierr = ComputeExactSolution(user->dm, user->current_time, algebra->exactsolution, user);CHKERRQ(ierr);
 
       ierr = OutputVTK(user->dm, "exact_solution.vtk", &viewer);CHKERRQ(ierr);
       ierr = VecView(algebra->exactsolution, viewer);CHKERRQ(ierr);
@@ -477,6 +504,14 @@ PetscErrorCode LoadOptions(MPI_Comm comm, User user)
 
   ierr = PetscOptionsBegin(comm,NULL,"Unstructured Finite Volume Method Options","");CHKERRQ(ierr);
   {
+    ierr = PetscOptionsString("-RiemannSolver", "the Riemann Solver. One of: Rusanov (default), David, CFL", "SetupFunction.c",
+        user->RiemannSolver,user->RiemannSolver, sizeof(user->RiemannSolver), &set);CHKERRQ(ierr);
+    if(!set) {ierr = PetscSNPrintf(user->RiemannSolver,sizeof(user->RiemannSolver),"Rusanov");CHKERRQ(ierr);}
+    PetscPrintf(PETSC_COMM_WORLD, "Using the %s Riemann Solver!!!\n", user->RiemannSolver);
+
+    ierr = PetscOptionsReal("-CFL","The Courant number coefficient","", user->CFL, &user->CFL, &set);CHKERRQ(ierr);
+    if(!set){user->CFL = 1.0;}
+
     user->reconstruct = PETSC_FALSE;
     ierr = PetscOptionsBool("-reconstruct","Reconstruct gradients for a second order method (grows stencil)","",user->reconstruct,&user->reconstruct,NULL);CHKERRQ(ierr);
     user->TimeIntegralMethod = 0;
@@ -666,8 +701,8 @@ PetscErrorCode SolveTimeDependent(void* ctx)
 PetscErrorCode SetInitialCondition(DM dm, Vec X, User user)
 {
   DM                dmCell;
-  const PetscScalar *cellgeom;
-  PetscScalar       *x;
+  const PetscReal *cellgeom;
+  PetscReal       *x;
   PetscInt          cStart, cEnd, cEndInterior = user->cEndInterior, c;
   PetscErrorCode    ierr;
 
@@ -678,13 +713,14 @@ PetscErrorCode SetInitialCondition(DM dm, Vec X, User user)
   ierr = VecGetArray(X, &x);CHKERRQ(ierr);
   for (c = cStart; c < cEndInterior; ++c) {
     const CellGeom *cg;
-    PetscScalar    *xc;
+    PetscReal    *xc;
 
     ierr = DMPlexPointLocalRead(dmCell,c,cellgeom,&cg);CHKERRQ(ierr);
     ierr = DMPlexPointGlobalRef(dm,c,x,&xc);CHKERRQ(ierr);
     if (xc) {
       ierr = InitialCondition(0.0, cg->centroid, xc, user);CHKERRQ(ierr);
     }
+    //printf("cell %d, coord (%g, %g, %g)\n", c, cg->centroid[0], cg->centroid[1], cg->centroid[2]);
   }
   ierr = VecRestoreArrayRead(user->cellgeom, &cellgeom);CHKERRQ(ierr);
   ierr = VecRestoreArray(X, &x);CHKERRQ(ierr);
@@ -753,6 +789,41 @@ PetscErrorCode MonitorFunction(SNES snes, PetscInt its, double norm, void *dctx)
   }
 
   ierr = PetscPrintf(PETSC_COMM_WORLD, ".\n");CHKERRQ(ierr);
+
+  PetscFunctionReturn(0);
+}
+
+#undef __FUNCT__
+#define __FUNCT__ "ReformatSolution"
+/**
+   divide the the solution by the density
+*/
+PetscErrorCode ReformatSolution(Vec solution, Vec solution_unscaled, User user)
+{
+  PetscReal             *x;
+  const PetscReal       *xold;
+  PetscInt                cStart, cEnd, cEndInterior = user->cEndInterior, c;
+  PetscErrorCode          ierr;
+
+  PetscFunctionBeginUser;
+  ierr = DMPlexGetHeightStratum(user->dm, 0, &cStart, &cEnd);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(solution, &xold);CHKERRQ(ierr);
+  ierr = VecGetArray(solution_unscaled, &x);CHKERRQ(ierr);
+  for (c = cStart; c < cEndInterior; ++c) {
+    PetscReal    *xc, *xcold;
+
+    ierr = DMPlexPointGlobalRef(user->dm,c,x,&xc);CHKERRQ(ierr);
+    ierr = DMPlexPointGlobalRead(user->dm,c,xold,&xcold);CHKERRQ(ierr);
+    if (xc) {
+      xc[0] = xcold[0];          // Density
+      xc[1] = xcold[1]/xcold[0]; // Velocity u (the x-direction)
+      xc[2] = xcold[2]/xcold[0]; // Velocity v (the y-direction)
+      xc[3] = xcold[3]/xcold[0]; // Velocity w (the z-direction)
+      xc[4] = xcold[4]/xcold[0]; // Total energy E
+    }
+  }
+  ierr = VecRestoreArrayRead(solution, &xold);CHKERRQ(ierr);
+  ierr = VecRestoreArray(solution_unscaled, &x);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }

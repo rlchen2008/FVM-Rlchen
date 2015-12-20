@@ -115,7 +115,7 @@ PetscReal Limit_Minmod(PetscReal f)
 }
 PetscReal Limit_MinmodGrad(PetscReal f)
 { /*Compute the direvative of function PetscMax(0,PetscMin(f,(1-f))*2)*/
-  PetscScalar result = 0.0;
+  PetscReal result = 0.0;
   if (f < 1-f){
     if (f < 0.0) {
       result = 0.0;
@@ -139,7 +139,7 @@ PetscReal Limit_VanLeer(PetscReal f)
 }
 PetscReal Limit_VanLeerGrad(PetscReal f)
 { /*Compute the direvative of function PetscMax(0,4*f*(1-f))*/
-  PetscScalar result = 0.0;
+  PetscReal result = 0.0;
   if(f*(1-f)<0.0){
     result = 0.0;
   }else{
@@ -155,7 +155,7 @@ PetscReal Limit_VanAlbada(PetscReal f)
 }
 PetscReal Limit_VanAlbadaGrad(PetscReal f)
 { /*Compute the direvative of function PetscMax(0, 2*f*(1-f) / (PetscSqr(f) + PetscSqr(1-f)))*/
-  PetscScalar result = 0.0;
+  PetscReal result = 0.0;
   if (f*(1-f)<0.0) {
     result = 0.0;
   }else{
@@ -173,7 +173,7 @@ PetscReal Limit_Sin(PetscReal f)
 }
 PetscReal Limit_SinGrad(PetscReal f)
 {/*Compute the direvative of function PetscSinReal(PETSC_PI*PetscMax(0,PetscMin(f,1)))*/
-  PetscScalar result = 0.0;
+  PetscReal result = 0.0;
   if (f<1.0 && f>0.0) {
     result = PETSC_PI*PetscCosReal(PETSC_PI*f);
   }else{
@@ -199,7 +199,7 @@ PetscReal Limit_MC(PetscReal f)
 }
 PetscReal Limit_MCGrad(PetscReal f)
 {/*Compute the direvative of function Limit_MC*/
-  PetscScalar result = 0.0;
+  PetscReal result = 0.0;
   if (Limit_Superbee(f)<1.0){
     result = Limit_SuperbeeGrad(f);
   }else{
@@ -209,35 +209,35 @@ PetscReal Limit_MCGrad(PetscReal f)
 }
 
 
-PetscScalar DotDIM(const PetscScalar *x,const PetscScalar *y)
+PetscReal DotDIM(const PetscReal *x,const PetscReal *y)
 {
   PetscInt    i;
-  PetscScalar prod=0.0;
+  PetscReal prod=0.0;
 
   for (i=0; i<DIM; i++) prod += x[i]*y[i];
   return prod;
 }
 
-PetscReal NormDIM(const PetscScalar *x)
+PetscReal NormDIM(const PetscReal *x)
 {
   return PetscSqrtReal(PetscAbsScalar(DotDIM(x,x)));
 }
 
-void axDIM(const PetscScalar a,PetscScalar *x)
+void axDIM(const PetscReal a,PetscReal *x)
 {
   PetscInt i;
   for (i=0; i<DIM; i++) x[i] *= a;
 }
 
-void waxDIM(const PetscScalar a,const PetscScalar *x, PetscScalar *w)
+void waxDIM(const PetscReal a,const PetscReal *x, PetscReal *w)
 {
   PetscInt i;
   for (i=0; i<DIM; i++) w[i] = x[i]*a;
 }
-void NormalSplitDIM(const PetscReal *n,const PetscScalar *x,PetscScalar *xn,PetscScalar *xt)
+void NormalSplitDIM(const PetscReal *n,const PetscReal *x,PetscReal *xn,PetscReal *xt)
 {                               /* Split x into normal and tangential components */
   PetscInt    i;
-  PetscScalar c;
+  PetscReal c;
   c = DotDIM(x,n)/DotDIM(n,n);
   for (i=0; i<DIM; i++) {
     xn[i] = c*n[i];
@@ -245,54 +245,60 @@ void NormalSplitDIM(const PetscReal *n,const PetscScalar *x,PetscScalar *xn,Pets
   }
 }
 
-PetscScalar Dot2(const PetscScalar *x,const PetscScalar *y)
+PetscReal Dot2(const PetscReal *x,const PetscReal *y)
 {
   return x[0]*y[0] + x[1]*y[1];
 }
 
-PetscReal Norm2(const PetscScalar *x)
+PetscReal Norm2(const PetscReal *x)
 {
   return PetscSqrtReal(PetscAbsScalar(Dot2(x,x)));
 }
 
-void Normalize2(PetscScalar *x)
+void Normalize2(PetscReal *x)
 {
   PetscReal a = 1./Norm2(x); x[0] *= a; x[1] *= a;
 }
 
-void Waxpy2(PetscScalar a,const PetscScalar *x,const PetscScalar *y,PetscScalar *w)
+void Waxpy2(PetscReal a,const PetscReal *x,const PetscReal *y,PetscReal *w)
 {
   w[0] = a*x[0] + y[0]; w[1] = a*x[1] + y[1];
 }
 
-void Scale2(PetscScalar a,const PetscScalar *x,PetscScalar *y)
+void Scale2(PetscReal a,const PetscReal *x,PetscReal *y)
 {
   y[0] = a*x[0]; y[1] = a*x[1];
 }
 
-void WaxpyD(PetscInt dim, PetscScalar a, const PetscScalar *x, const PetscScalar *y, PetscScalar *w)
+void WaxpyD(PetscInt dim, PetscReal a, const PetscReal *x, const PetscReal *y, PetscReal *w)
 {
   PetscInt d; for (d = 0; d < dim; ++d) w[d] = a*x[d] + y[d];
 }
 
-PetscScalar DotD(PetscInt dim, const PetscScalar *x, const PetscScalar *y)
+PetscReal DotD(PetscInt dim, const PetscReal *x, const PetscReal *y)
 {
-  PetscScalar sum = 0.0; PetscInt d; for (d = 0; d < dim; ++d) sum += x[d]*y[d]; return sum;
+  PetscReal sum = 0.0; PetscInt d; for (d = 0; d < dim; ++d) sum += x[d]*y[d]; return sum;
 }
-PetscReal NormD(PetscInt dim, const PetscScalar *x)
+PetscReal NormD(PetscInt dim, const PetscReal *x)
 {
   return PetscSqrtReal(PetscAbsScalar(DotD(dim,x,x)));
 }
 
-void NormalSplit(const PetscReal *n,const PetscScalar *x,PetscScalar *xn,PetscScalar *xt)
+void NormalSplit(const PetscReal *n,const PetscReal *x,PetscReal *xn,PetscReal *xt)
 {                               /* Split x into normal and tangential components */
   Scale2(Dot2(x,n)/Dot2(n,n),n,xn);
   Waxpy2(-1,xn,x,xt);
 }
 
-PetscReal SourceRho(User user, const PetscScalar *cgrad, const PetscScalar *x, const PetscReal *xcoord)
+PetscReal SourceRho(User user, const PetscReal *cgrad, const PetscReal *x, const PetscReal *xcoord)
 {
-  return 0.0;
+  PetscReal       result;
+
+  result = 0.0;
+  if(user->benchmark_couette) {
+    result = 0.0;
+  }
+  return result;
 }
 
 #undef __FUNCT__
@@ -310,7 +316,7 @@ PetscReal SourceRho(User user, const PetscScalar *cgrad, const PetscScalar *x, c
 + xcoord - The coordinates of the cell centriod
 
 @*/
-PetscReal SourceU(User user, const PetscScalar *cgrad, const PetscScalar *x, const PetscReal *xcoord)
+PetscReal SourceU(User user, const PetscReal *cgrad, const PetscReal *x, const PetscReal *xcoord)
 {
   PetscReal       gradu[DIM][DIM];
   PetscReal       gradRhoU[DIM][DIM];
@@ -321,15 +327,17 @@ PetscReal SourceU(User user, const PetscScalar *cgrad, const PetscScalar *x, con
   const Node      *X = (const Node*)x;
   PetscReal       u[DIM];
   PetscReal       Temp;
+  PetscReal       yy;
+  PetscReal     U, H, uu;
+
+  yy = xcoord[1];
+
+  U = 0.3; H = 10;
+  uu = yy*U/H;
 
   f = 0.0;
   if(user->benchmark_couette) {
-    PetscScalar U, H, T;
-
-    U = 0.3; H = 10;
-    T = user->T0 + xcoord[1]/H*(user->T1 - user->T0) + user->viscosity*U*U/(2*user->k)*xcoord[1]/H*(1.0 - xcoord[1]/H);
-    f = (1/T)*(U/H)*xcoord[1];
-    result = f;
+    //f = -uu;
   }
 
   if (user->PressureFlux){
@@ -386,7 +394,7 @@ PetscReal SourceU(User user, const PetscScalar *cgrad, const PetscScalar *x, con
 + xcoord - The coordinates of the cell centriod
 
 @*/
-PetscReal SourceV(User user, const PetscScalar *cgrad, const PetscScalar *x, const PetscReal *xcoord)
+PetscReal SourceV(User user, const PetscReal *cgrad, const PetscReal *x, const PetscReal *xcoord)
 {
 PetscReal       gradu[DIM][DIM];
   PetscReal       gradRhoU[DIM][DIM];
@@ -400,12 +408,12 @@ PetscReal       gradu[DIM][DIM];
 
   f = 0.0;
   if(user->benchmark_couette) {
-    PetscScalar U, H, T;
+    //PetscReal U, H, T;
 
-    U = 0.3; H = 10;
-    T = user->T0 + xcoord[1]/H*(user->T1 - user->T0) + user->viscosity*U*U/(2*user->k)*xcoord[1]/H*(1.0 - xcoord[1]/H);
-    f = (1/T)*(U/H)*xcoord[1];
-    result = f;
+    //U = 0.3; H = 10;
+    //T = user->T0 + xcoord[1]/H*(user->T1 - user->T0) + user->viscosity*U*U/(2*user->k)*xcoord[1]/H*(1.0 - xcoord[1]/H);
+    //f = (1/T)*(U/H)*xcoord[1];
+    f = 0.0;
   }
 
   if (user->PressureFlux){
@@ -462,7 +470,7 @@ PetscReal       gradu[DIM][DIM];
 + xcoord - The coordinates of the cell centriod
 
 @*/
-PetscReal SourceW(User user, const PetscScalar *cgrad, const PetscScalar *x, const PetscReal *xcoord)
+PetscReal SourceW(User user, const PetscReal *cgrad, const PetscReal *x, const PetscReal *xcoord)
 {
   PetscReal       gradu[DIM][DIM];
   PetscReal       gradRhoU[DIM][DIM];
@@ -476,12 +484,12 @@ PetscReal SourceW(User user, const PetscScalar *cgrad, const PetscScalar *x, con
 
   f = 0.0;
   if(user->benchmark_couette) {
-    PetscScalar U, H, T;
+    //PetscReal U, H, T;
 
-    U = 0.3; H = 10;
-    T = user->T0 + xcoord[1]/H*(user->T1 - user->T0) + user->viscosity*U*U/(2*user->k)*xcoord[1]/H*(1.0 - xcoord[1]/H);
-    f = (1/T)*(U/H)*xcoord[1];
-    result = f;
+    //U = 0.3; H = 10;
+    //T = user->T0 + xcoord[1]/H*(user->T1 - user->T0) + user->viscosity*U*U/(2*user->k)*xcoord[1]/H*(1.0 - xcoord[1]/H);
+    //f = (1/T)*(U/H)*xcoord[1];
+    f = 0.0;
   }
 
   if (user->PressureFlux){
@@ -541,7 +549,7 @@ PetscReal SourceW(User user, const PetscScalar *cgrad, const PetscScalar *x, con
 + xcoord - The coordinates of the cell centriod
 
 @*/
-PetscReal SourceE(User user, const PetscScalar *cgrad, const PetscScalar *x, const PetscReal *xcoord)
+PetscReal SourceE(User user, const PetscReal *cgrad, const PetscReal *x, const PetscReal *xcoord)
 {
   PetscReal       gradu[DIM][DIM];
   PetscReal       gradRho[DIM];
@@ -549,8 +557,20 @@ PetscReal SourceE(User user, const PetscScalar *cgrad, const PetscScalar *x, con
   PetscInt        i, j;
   PetscReal       f, phi, other, result;
   const Node      *X = (const Node*)x;
+  PetscReal       yy;
+  PetscReal     U, H, uu;
+
+  yy = xcoord[1];
+
+  U = 0.3; H = 10;
+  uu = yy*U/H;
 
   f = 0.0;
+
+  if(user->benchmark_couette) {
+    //f = -0.5*uu*uu;
+  }
+
   for (i=0; i<DIM; i++) {
     gradRho[i] = cgrad[i];
   }/*gradient of the density*/
@@ -574,7 +594,7 @@ PetscReal SourceE(User user, const PetscScalar *cgrad, const PetscScalar *x, con
                    + X->ru[1]*(X->r*gradT[1] + X->rE*gradRho[1])
                    + X->ru[2]*(X->r*gradT[2] + X->rE*gradRho[2]));
   result = phi + other + f;
-  if(user->Euler) result = f;
+  result = f;
 
   return result;
 }

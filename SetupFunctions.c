@@ -160,7 +160,9 @@ PetscErrorCode FormTimeStepFunction(User user, Algebra algebra, Vec in, Vec out)
   ierr = VecGetDM(user->facegeom,&dmFace);CHKERRQ(ierr);
   ierr = VecGetDM(user->cellgeom,&dmCell);CHKERRQ(ierr);
 
-  ierr = ConstructCellCentriodGradient(user->dm, dmFace, dmCell, user->current_time, inLocal, out, user);CHKERRQ(ierr);
+  if(!user->Euler || user->second_order){
+    ierr = ConstructCellCentriodGradient(user->dm, dmFace, dmCell, user->current_time, inLocal, out, user);CHKERRQ(ierr);
+  }
   /*Construct the cell gradient at the current time
     and save it into the user->dmGrad. If you want
     to use the cell gradient, following these:
@@ -174,6 +176,7 @@ PetscErrorCode FormTimeStepFunction(User user, Algebra algebra, Vec in, Vec out)
     ierr = CaculateLocalFunction_Upwind(user->dm, dmFace, dmCell, user->current_time, inLocal, out, user);CHKERRQ(ierr);
   }
 
+  //VecView(out,PETSC_VIEWER_STDOUT_WORLD);
   ierr = CaculateLocalSourceTerm(user->dm, inLocal, out, user);CHKERRQ(ierr);
 
   ierr = DMLocalToGlobalBegin(user->dm, inLocal, INSERT_VALUES, in);CHKERRQ(ierr);
@@ -182,7 +185,7 @@ PetscErrorCode FormTimeStepFunction(User user, Algebra algebra, Vec in, Vec out)
   ierr = DMRestoreLocalVector(user->dm, &inLocal);CHKERRQ(ierr);
   //VecView(in,PETSC_VIEWER_STDOUT_WORLD);
   //VecView(out,PETSC_VIEWER_STDOUT_WORLD);
-  if (0){
+  #if 0
     PetscViewer    viewer;
     PetscReal fnnorm;
 
@@ -192,7 +195,7 @@ PetscErrorCode FormTimeStepFunction(User user, Algebra algebra, Vec in, Vec out)
     ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
     ierr = PetscPrintf(PETSC_COMM_WORLD,"Step %D at time %g with founction norm = %g \n",
                        user->current_step, user->current_time, fnnorm);CHKERRQ(ierr);
-  }
+  #endif
 
   PetscFunctionReturn(0);
 }
@@ -233,7 +236,9 @@ PetscErrorCode MyRHSFunction(TS ts,PetscReal time,Vec in,Vec out,void *ctx)
 
   ierr = ApplyBC(dm, time, inLocal, user);CHKERRQ(ierr);
 
-  ierr = ConstructCellCentriodGradient(user->dm, dmFace, dmCell, time, inLocal, out, user);CHKERRQ(ierr);
+  if(!user->Euler || user->second_order){
+    ierr = ConstructCellCentriodGradient(user->dm, dmFace, dmCell, time, inLocal, out, user);CHKERRQ(ierr);
+  }
 
   ierr = VecZeroEntries(out);CHKERRQ(ierr);
   if (user->second_order){
@@ -256,8 +261,8 @@ PetscErrorCode MyRHSFunction(TS ts,PetscReal time,Vec in,Vec out,void *ctx)
 PetscErrorCode CaculateLocalMassFunction(DM dm, Vec locX, Vec F, User user)
 {
   PetscErrorCode    ierr;
-  const PetscScalar *x;
-  PetscScalar       *f;
+  const PetscReal *x;
+  PetscReal       *f;
   PetscInt          cStart, cell;
 //  Physics           phys = user->model->physics;
 
@@ -268,8 +273,8 @@ PetscErrorCode CaculateLocalMassFunction(DM dm, Vec locX, Vec F, User user)
 
   for (cell = cStart; cell < user->cEndInterior; cell++) {
     PetscInt          i;
-    PetscScalar       *fref;
-    const PetscScalar *xref;
+    PetscReal       *fref;
+    const PetscReal *xref;
 
     ierr = DMPlexPointGlobalRead(dm,cell,x,&xref);CHKERRQ(ierr); /*For the unkown variables*/
     ierr = DMPlexPointGlobalRef(dm,cell,f,&fref);CHKERRQ(ierr);
@@ -277,9 +282,9 @@ PetscErrorCode CaculateLocalMassFunction(DM dm, Vec locX, Vec F, User user)
     if (fref){
       fref[0] = xref[0];/*the density*/
       for (i=1; i<DIM+1; i++) {
-        fref[i] = xref[0]*xref[i];
+        fref[i] = xref[i];
       }/*viscosity*/
-      fref[DIM+1] = user->R/(user->adiabatic - 1)*xref[0]*xref[DIM+1];/*Energy*/
+      fref[DIM+1] = xref[DIM+1];/*Energy*/
     }
   }
 
@@ -298,13 +303,13 @@ PetscErrorCode CaculateLocalSourceTerm(DM dm, Vec locX, Vec F, User user)
 {
   PetscErrorCode    ierr;
   DM                dmGrad = user->dmGrad;
-  const PetscScalar *x;
-  PetscScalar       *f;
+  const PetscReal *x;
+  PetscReal       *f;
   PetscInt          cStart, cell;
-  const PetscScalar *cellgeom;
+  const PetscReal *cellgeom;
   const CellGeom    *cg;
   Vec               locGrad, Grad;
-  const PetscScalar *grad;
+  const PetscReal *grad;
   DM                dmCell;
 
   PetscFunctionBeginUser;
@@ -316,25 +321,26 @@ PetscErrorCode CaculateLocalSourceTerm(DM dm, Vec locX, Vec F, User user)
   ierr = DMPlexGetHeightStratum(dm, 0, &cStart, NULL);CHKERRQ(ierr);
   ierr = VecGetArrayRead(user->cellgeom,&cellgeom);CHKERRQ(ierr);
 
-  ierr = DMGetGlobalVector(dmGrad,&Grad);CHKERRQ(ierr);
-
-  ierr = DMGetLocalVector(dmGrad,&locGrad);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalBegin(dmGrad,Grad,INSERT_VALUES,locGrad);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(dmGrad,Grad,INSERT_VALUES,locGrad);CHKERRQ(ierr);
-
-  ierr = DMRestoreGlobalVector(dmGrad,&Grad);CHKERRQ(ierr);
-
-  ierr = VecGetArrayRead(locGrad,&grad);CHKERRQ(ierr);
+  if(!user->Euler){
+    ierr = DMGetGlobalVector(dmGrad,&Grad);CHKERRQ(ierr);
+    ierr = DMGetLocalVector(dmGrad,&locGrad);CHKERRQ(ierr);
+    ierr = DMGlobalToLocalBegin(dmGrad,Grad,INSERT_VALUES,locGrad);CHKERRQ(ierr);
+    ierr = DMGlobalToLocalEnd(dmGrad,Grad,INSERT_VALUES,locGrad);CHKERRQ(ierr);
+    ierr = DMRestoreGlobalVector(dmGrad,&Grad);CHKERRQ(ierr);
+    ierr = VecGetArrayRead(locGrad,&grad);CHKERRQ(ierr);
+  }
 
   for (cell = cStart; cell < user->cEndInterior; cell++) {
-    PetscScalar       *fref;
-    const PetscScalar *xref;
-    PetscScalar       *cgrad;
+    PetscReal       *fref;
+    const PetscReal *xref;
+    PetscReal       *cgrad;
 
     ierr = DMPlexPointLocalRead(dmCell,cell,cellgeom,&cg);CHKERRQ(ierr);
     ierr = DMPlexPointLocalRead(dm,cell,x,&xref);CHKERRQ(ierr); /*For the unkown variables*/
     ierr = DMPlexPointGlobalRef(dm,cell,f,&fref);CHKERRQ(ierr);
-    ierr = DMPlexPointLocalRead(dmGrad,cell,grad,&cgrad);CHKERRQ(ierr);
+    if(!user->Euler){
+      ierr = DMPlexPointLocalRead(dmGrad,cell,grad,&cgrad);CHKERRQ(ierr);
+    }
 //    if (!fref){ PetscPrintf(PETSC_COMM_WORLD,"%d, %d\n", cell, user->cEndInterior);}
     if (fref){
       fref[0] += SourceRho(user, cgrad, xref, cg->centroid);/*the continuity equation*/
@@ -349,8 +355,10 @@ PetscErrorCode CaculateLocalSourceTerm(DM dm, Vec locX, Vec F, User user)
   ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(user->cellgeom,&cellgeom);CHKERRQ(ierr);
 
-  ierr = VecRestoreArrayRead(locGrad,&grad);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(dmGrad,&locGrad);CHKERRQ(ierr);
+  if(!user->Euler){
+    ierr = VecRestoreArrayRead(locGrad,&grad);CHKERRQ(ierr);
+    ierr = DMRestoreLocalVector(dmGrad,&locGrad);CHKERRQ(ierr);
+  }
 
   PetscFunctionReturn(0);
 }
@@ -365,11 +373,12 @@ PetscErrorCode CaculateLocalFunction_Upwind(DM dm,DM dmFace,DM dmCell,PetscReal 
   Physics           phys = user->model->physics;
   DM                dmGrad = user->dmGrad;
   PetscErrorCode    ierr;
-  const PetscScalar *facegeom, *cellgeom, *x;
-  PetscScalar       *f;
+  const PetscReal *facegeom, *cellgeom, *x;
+  PetscReal       *f;
   PetscInt          fStart, fEnd, face;
 
   Vec               locGrad, Grad;
+  const PetscReal   *grad;
 
   PetscFunctionBeginUser;
   ierr = VecGetArrayRead(user->facegeom, &facegeom);CHKERRQ(ierr);
@@ -378,29 +387,29 @@ PetscErrorCode CaculateLocalFunction_Upwind(DM dm,DM dmFace,DM dmCell,PetscReal 
   ierr = VecGetArray(F, &f);CHKERRQ(ierr);
   ierr = DMPlexGetHeightStratum(dm, 1, &fStart, &fEnd);CHKERRQ(ierr);
 
-  ierr = DMGetGlobalVector(dmGrad, &Grad);CHKERRQ(ierr);
+  if(!user->Euler){
+    ierr = DMGetGlobalVector(dmGrad, &Grad);CHKERRQ(ierr);
 
-  ierr = DMGetLocalVector(dmGrad, &locGrad);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalBegin(dmGrad, Grad, INSERT_VALUES, locGrad);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(dmGrad, Grad, INSERT_VALUES, locGrad);CHKERRQ(ierr);
+    ierr = DMGetLocalVector(dmGrad, &locGrad);CHKERRQ(ierr);
+    ierr = DMGlobalToLocalBegin(dmGrad, Grad, INSERT_VALUES, locGrad);CHKERRQ(ierr);
+    ierr = DMGlobalToLocalEnd(dmGrad, Grad, INSERT_VALUES, locGrad);CHKERRQ(ierr);
 
-  ierr = DMRestoreGlobalVector(dmGrad, &Grad);CHKERRQ(ierr);
-
-  const PetscScalar *grad;
-  ierr = VecGetArrayRead(locGrad, &grad);CHKERRQ(ierr);
+    ierr = DMRestoreGlobalVector(dmGrad, &Grad);CHKERRQ(ierr);
+    ierr = VecGetArrayRead(locGrad, &grad);CHKERRQ(ierr);
+  }
 
   {
     const PetscInt    *cells;
     PetscInt          i,ghost;
-    PetscScalar       *fluxcon, *fluxdiff, *fL,*fR;
+    PetscReal       *fluxcon, *fluxdiff, *fL,*fR;
     const FaceGeom    *fg;
     const CellGeom    *cgL,*cgR;
-    const PetscScalar *xL,*xR;
-    const PetscScalar *cgrad[2];
+    const PetscReal *xL,*xR;
+    const PetscReal *cgrad[2];
     PetscReal         FaceArea;
 
-    ierr = PetscMalloc(phys->dof * sizeof(PetscScalar), &fluxcon);CHKERRQ(ierr); /*For the convection terms*/
-    ierr = PetscMalloc(phys->dof * sizeof(PetscScalar), &fluxdiff);CHKERRQ(ierr); /*For the diffusion terms*/
+    ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &fluxcon);CHKERRQ(ierr); /*For the convection terms*/
+    ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &fluxdiff);CHKERRQ(ierr); /*For the diffusion terms*/
 
     for (face = fStart; face < fEnd; ++face) {
       ierr = DMPlexGetLabelValue(dm, "ghost", face, &ghost);CHKERRQ(ierr);
@@ -420,10 +429,11 @@ PetscErrorCode CaculateLocalFunction_Upwind(DM dm,DM dmFace,DM dmCell,PetscReal 
       ierr = DMPlexPointGlobalRef(dm, cells[0], f, &fL);CHKERRQ(ierr); /*For the functions*/
       ierr = DMPlexPointGlobalRef(dm, cells[1], f, &fR);CHKERRQ(ierr);
 
-      ierr = DMPlexPointLocalRead(dmGrad, cells[0], grad, &cgrad[0]);CHKERRQ(ierr);
-      ierr = DMPlexPointLocalRead(dmGrad, cells[1], grad, &cgrad[1]);CHKERRQ(ierr);
-
-      ierr = RiemannSolver_Rusanov(user, cgrad[0], cgrad[1], fg->centroid, cgL->centroid, cgR->centroid, fg->normal, xL, xR, fluxcon, fluxdiff);CHKERRQ(ierr);
+      if(!user->Euler){
+        ierr = DMPlexPointLocalRead(dmGrad, cells[0], grad, &cgrad[0]);CHKERRQ(ierr);
+        ierr = DMPlexPointLocalRead(dmGrad, cells[1], grad, &cgrad[1]);CHKERRQ(ierr);
+      }
+      ierr = RiemannSolver(user, cgrad[0], cgrad[1], fg->centroid, cgL->centroid, cgR->centroid, fg->normal, xL, xR, fluxcon, fluxdiff);CHKERRQ(ierr);
     /*Caculate the flux*/
       ierr = DMPlexComputeCellGeometryFVM(dm, face, &FaceArea, NULL, NULL);CHKERRQ(ierr);
       //PetscPrintf(PETSC_COMM_SELF, "FaceArea=%f, Volume=%f\n",FaceArea,cgL->volume);
@@ -436,35 +446,40 @@ PetscErrorCode CaculateLocalFunction_Upwind(DM dm,DM dmFace,DM dmCell,PetscReal 
                                     i, cgrad[0][DIM*i], cgrad[0][DIM*i + 1], cgrad[0][DIM*i + 2],
                                     i, cgrad[1][DIM*i], cgrad[1][DIM*i + 1], cgrad[1][DIM*i + 2], i, fluxcon[i]);
 */
- //       if (fL) PetscPrintf(PETSC_COMM_SELF, "x=%g, y=%g, z=%g,fluxcon[i]=%g, FaceArea=%g, volume=%g, fLc=%g, fL=%g\n",fg->centroid[0], fg->centroid[1], fg->centroid[2],fluxcon[i],FaceArea,cgL->volume,FaceArea*(fluxcon[i] + fluxdiff[i])/cgL->volume,fL[i]);
 
         if (fL) {
           fL[i] -= FaceArea*(fluxcon[i] + fluxdiff[i])/cgL->volume;
-          if (PetscAbsScalar(fL[i])<1.e-8) {
+          if (PetscAbsScalar(fL[i])<MYTOLERANCE) {
             fL[i] = 0.0;
-          } // to avoid the too small number, is this necessary? not sure!
+          } // to avoid the too small number
+          //PetscPrintf(PETSC_COMM_SELF, "cell[0] (%3.4g, %3.4g, %3.4g), face (%3.4g, %3.4g, %3.4g),fluxcon[i]=%3.4g, FaceArea=%3.4g, volume=%3.4g, fL[%d]= %3.4g\n",cgL->centroid[0], cgL->centroid[1], cgL->centroid[2],fg->centroid[0], fg->centroid[1], fg->centroid[2], fluxcon[i], FaceArea, cgL->volume, i, fL[i]);
         }
-//        if (fL) PetscPrintf(PETSC_COMM_SELF, "    x=%g, y=%g, z=%g,fluxcon[i]=%g, FaceArea=%g, volume=%g, fLc=%g, fL=%g\n",fg->centroid[0], fg->centroid[1], fg->centroid[2],fluxcon[i],FaceArea,cgL->volume,FaceArea*(fluxcon[i] + fluxdiff[i])/cgL->volume,fL[i]);
         if (fR) {
           fR[i] += FaceArea*(fluxcon[i] + fluxdiff[i])/cgR->volume;
-          if (PetscAbsScalar(fR[i])<1.e-8) {
+          if (PetscAbsScalar(fR[i])<MYTOLERANCE) {
             fR[i] = 0.0;
           } // to avoid the too small number
+          //PetscPrintf(PETSC_COMM_SELF, "cell[1] (%3.4g, %3.4g, %3.4g), face (%3.4g, %3.4g, %3.4g),fluxcon[i]=%3.4g, FaceArea=%3.4g, volume=%3.4g, fR[%d]= %3.4g\n",cgR->centroid[0], cgR->centroid[1], cgR->centroid[2],fg->centroid[0], fg->centroid[1], fg->centroid[2], fluxcon[i], FaceArea, cgL->volume, i, fR[i]);
         }
 
       }
 
+      //printf("\n");
     }
     ierr = PetscFree(fluxcon);CHKERRQ(ierr);
     ierr = PetscFree(fluxdiff);CHKERRQ(ierr);
   }
-//  VecView(F,PETSC_VIEWER_STDOUT_WORLD);
-  ierr = VecRestoreArrayRead(locGrad,&grad);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(dmGrad,&locGrad);CHKERRQ(ierr);
+
+  if(!user->Euler){
+    ierr = VecRestoreArrayRead(locGrad,&grad);CHKERRQ(ierr);
+    ierr = DMRestoreLocalVector(dmGrad,&locGrad);CHKERRQ(ierr);
+  }
   ierr = VecRestoreArrayRead(user->facegeom,&facegeom);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(user->cellgeom,&cellgeom);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(locX,&x);CHKERRQ(ierr);
   ierr = VecRestoreArray(F,&f);CHKERRQ(ierr);
+  //VecView(F,PETSC_VIEWER_STDOUT_WORLD);
+
   PetscFunctionReturn(0);
 }
 
@@ -480,8 +495,8 @@ PetscErrorCode CaculateLocalFunction_LS(DM dm,DM dmFace,DM dmCell,PetscReal time
   Physics           phys   = mod->physics;
   const PetscInt    dof    = phys->dof;
   PetscErrorCode    ierr;
-  const PetscScalar *facegeom, *cellgeom, *x;
-  PetscScalar       *f;
+  const PetscReal *facegeom, *cellgeom, *x;
+  PetscReal       *f;
   PetscInt          fStart, fEnd, face, cStart, cell;
   Vec               locGrad, locGradLimiter, Grad;
 /*
@@ -507,17 +522,17 @@ PetscErrorCode CaculateLocalFunction_LS(DM dm,DM dmFace,DM dmCell,PetscReal time
   ierr = DMPlexGetHeightStratum(dm, 0, &cStart, NULL);CHKERRQ(ierr);
 
   {
-    PetscScalar *grad;
+    PetscReal *grad;
     ierr = VecGetArray(Grad,&grad);CHKERRQ(ierr);
     const PetscInt    *faces;
     PetscInt          numFaces,f;
     PetscReal         *cellPhi; // Scalar limiter applied to each component separately
-    const PetscScalar *cx;
+    const PetscReal *cx;
     const CellGeom    *cg;
-    PetscScalar       *cgrad;
+    PetscReal       *cgrad;
     PetscInt          i;
 
-    ierr = PetscMalloc(phys->dof*sizeof(PetscScalar),&cellPhi);CHKERRQ(ierr);
+    ierr = PetscMalloc(phys->dof*sizeof(PetscReal),&cellPhi);CHKERRQ(ierr);
     // Limit interior gradients. Using cell-based loop because it generalizes better to vector limiters.
     for (cell=cStart; cell<user->cEndInterior; cell++) {
       ierr = DMPlexGetConeSize(dm,cell,&numFaces);CHKERRQ(ierr);
@@ -530,11 +545,11 @@ PetscErrorCode CaculateLocalFunction_LS(DM dm,DM dmFace,DM dmCell,PetscReal time
       for (i=0; i<dof; i++) cellPhi[i] = PETSC_MAX_REAL;
 
       for (f=0; f<numFaces; f++) {
-        const PetscScalar *ncx;
+        const PetscReal *ncx;
         const CellGeom    *ncg;
         const PetscInt    *fcells;
         PetscInt          face = faces[f],ncell;
-        PetscScalar       v[DIM];
+        PetscReal       v[DIM];
         PetscBool         ghost;
         ierr = IsExteriorGhostFace(dm,face,&ghost);CHKERRQ(ierr);
         if (ghost) continue;
@@ -546,7 +561,7 @@ PetscErrorCode CaculateLocalFunction_LS(DM dm,DM dmFace,DM dmCell,PetscReal time
         Waxpy2(-1, cg->centroid, ncg->centroid, v);
         for (i=0; i<dof; i++) {
           // We use the symmetric slope limited form of Berger, Aftosmis, and Murman 2005
-          PetscScalar phi,flim = 0.5 * (ncx[i] - cx[i]) / Dot2(&cgrad[i*DIM],v);
+          PetscReal phi,flim = 0.5 * (ncx[i] - cx[i]) / Dot2(&cgrad[i*DIM],v);
           phi        = (*user->Limit)(flim);
           cellPhi[i] = PetscMin(cellPhi[i],phi);
         }
@@ -571,24 +586,24 @@ PetscErrorCode CaculateLocalFunction_LS(DM dm,DM dmFace,DM dmCell,PetscReal time
   ierr = VecDestroy(&TempVec);CHKERRQ(ierr);
 
   {
-    const PetscScalar *grad, *gradlimiter;
+    const PetscReal *grad, *gradlimiter;
     const PetscInt    *cells;
     PetscInt          ghost,i,j;
-    PetscScalar       *fluxcon, *fluxdiff, *fx[2],*cf[2];
+    PetscReal       *fluxcon, *fluxdiff, *fx[2],*cf[2];
     const FaceGeom    *fg;
     const CellGeom    *cg[2];
-    const PetscScalar *cx[2],*cgrad[2], *cgradlimiter[2];
-    PetscScalar       *uL, *uR;
+    const PetscReal *cx[2],*cgrad[2], *cgradlimiter[2];
+    PetscReal       *uL, *uR;
     PetscReal         FaceArea;
 
     ierr = VecGetArrayRead(locGrad,&grad);CHKERRQ(ierr);
     ierr = VecGetArrayRead(locGradLimiter,&gradlimiter);CHKERRQ(ierr);
     ierr = VecGetArray(F,&f);CHKERRQ(ierr);
 
-    ierr = PetscMalloc(phys->dof * sizeof(PetscScalar), &fluxcon);CHKERRQ(ierr); // For the convection terms
-    ierr = PetscMalloc(phys->dof * sizeof(PetscScalar), &fluxdiff);CHKERRQ(ierr); // For the diffusion terms
-    ierr = PetscMalloc(phys->dof * sizeof(PetscScalar), &uL);CHKERRQ(ierr);
-    ierr = PetscMalloc(phys->dof * sizeof(PetscScalar), &uR);CHKERRQ(ierr);// Please do not put the Malloc function into a for loop!!!!
+    ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &fluxcon);CHKERRQ(ierr); // For the convection terms
+    ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &fluxdiff);CHKERRQ(ierr); // For the diffusion terms
+    ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &uL);CHKERRQ(ierr);
+    ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &uR);CHKERRQ(ierr);// Please do not put the Malloc function into a for loop!!!!
 
     for (face=fStart; face<fEnd; face++) {
       fx[0] = uL; fx[1] = uR;
@@ -598,7 +613,7 @@ PetscErrorCode CaculateLocalFunction_LS(DM dm,DM dmFace,DM dmCell,PetscReal time
       ierr = DMPlexGetSupport(dm, face, &cells);CHKERRQ(ierr);
       ierr = DMPlexPointLocalRead(dmFace,face,facegeom,&fg);CHKERRQ(ierr);
       for (i=0; i<2; i++) {
-        PetscScalar dx[DIM];
+        PetscReal dx[DIM];
         ierr = DMPlexPointLocalRead(dmCell,cells[i],cellgeom,&cg[i]);CHKERRQ(ierr);
         ierr = DMPlexPointLocalRead(dm,cells[i],x,&cx[i]);CHKERRQ(ierr);
         ierr = DMPlexPointLocalRead(dmGrad,cells[i],gradlimiter,&cgradlimiter[i]);CHKERRQ(ierr);
@@ -612,7 +627,7 @@ PetscErrorCode CaculateLocalFunction_LS(DM dm,DM dmFace,DM dmCell,PetscReal time
         //  side of the face, respectively, that is u_L and u_R.
       }
 
-      ierr = RiemannSolver_Rusanov(user, cgrad[0], cgrad[1], fg->centroid, cg[0]->centroid, cg[1]->centroid, fg->normal, fx[0], fx[1], fluxcon, fluxdiff);CHKERRQ(ierr);
+      ierr = RiemannSolver(user, cgrad[0], cgrad[1], fg->centroid, cg[0]->centroid, cg[1]->centroid, fg->normal, fx[0], fx[1], fluxcon, fluxdiff);CHKERRQ(ierr);
 
       ierr = DMPlexComputeCellGeometryFVM(dm, face, &FaceArea, NULL, NULL);CHKERRQ(ierr);
         // Compute the face area
@@ -620,13 +635,13 @@ PetscErrorCode CaculateLocalFunction_LS(DM dm,DM dmFace,DM dmCell,PetscReal time
       for (i=0; i<phys->dof; i++) {
         if (cf[0]){
           cf[0][i] -= FaceArea*(fluxcon[i] + fluxdiff[i])/cg[0]->volume;
-          if (PetscAbsScalar(cf[0][i])<1.e-8) {
+          if (PetscAbsScalar(cf[0][i])<MYTOLERANCE) {
             cf[0][i] = 0.0;
           } // to avoid the too small number
         }
         if (cf[1]){
           cf[1][i] += FaceArea*(fluxcon[i] + fluxdiff[i])/cg[1]->volume;
-          if (PetscAbsScalar(cf[1][i])<1.e-8) {
+          if (PetscAbsScalar(cf[1][i])<MYTOLERANCE) {
             cf[1][i] = 0.0;
           } // to avoid the too small number. is this necessary? not sure!
         }
@@ -665,7 +680,7 @@ PetscErrorCode ConstructCellCentriodGradient(DM dm,DM dmFace,DM dmCell,PetscReal
   Physics           phys   = mod->physics;
   const PetscInt    dof    = phys->dof;
   PetscErrorCode    ierr;
-  const PetscScalar *facegeom, *cellgeom, *x;
+  const PetscReal *facegeom, *cellgeom, *x;
   PetscInt          fStart, fEnd, face, cStart;
   Vec               Grad;
 
@@ -678,16 +693,19 @@ PetscErrorCode ConstructCellCentriodGradient(DM dm,DM dmFace,DM dmCell,PetscReal
   ierr = DMPlexGetHeightStratum(dm, 1, &fStart, &fEnd);CHKERRQ(ierr);
   ierr = DMPlexGetHeightStratum(dm, 0, &cStart, NULL);CHKERRQ(ierr);
   {
-    PetscScalar *grad;
+    PetscReal *grad;
     ierr = VecGetArray(Grad,&grad);CHKERRQ(ierr);
     /* Reconstruct gradients */
     for (face=fStart; face<fEnd; face++) {
-      const PetscInt    *cells;
-      const PetscScalar *cx[2];
-      const FaceGeom    *fg;
-      PetscScalar       *cgrad[2];
-      PetscInt          i,j;
-      PetscBool         ghost;
+      const PetscInt  *cells;
+      const PetscReal *cx[2];
+      const FaceGeom  *fg;
+      PetscReal       *cgrad[2];
+      PetscInt        i,j;
+      PetscBool       ghost;
+      PetscReal       r[2], u[2], v[2], w[2], E[2];
+      PetscReal       ru[2], rv[2], rw[2], rE[2];
+      PetscReal       delta[5];
 
       ierr = IsExteriorGhostFace(dm,face,&ghost);CHKERRQ(ierr);
       if (ghost) continue;
@@ -695,13 +713,26 @@ PetscErrorCode ConstructCellCentriodGradient(DM dm,DM dmFace,DM dmCell,PetscReal
       ierr = DMPlexPointLocalRead(dmFace,face,facegeom,&fg);CHKERRQ(ierr);
       for (i=0; i<2; i++) {
         ierr = DMPlexPointLocalRead(dm,cells[i],x,&cx[i]);CHKERRQ(ierr);
+        // Note that the vector x stores the density scaled variables: r, ru, rv, rw, rE
+        r[i] = cx[i][0];  ru[i] = cx[i][1];  rv[i] = cx[i][2];  rw[i] = cx[i][3]; rE[i] = cx[i][4];
+        if (user->TimeIntegralMethod == EXPLICITMETHOD) {
+        u[i] = ru[i]/r[i]; v[i] = rv[i]/r[i]; w[i] = rw[i]/r[i]; E[i] = rE[i]/r[i];
+        }else{
+          u[i] = ru[i]; v[i] = rv[i]; w[i] = rw[i]; E[i] = rE[i];
+        }
         ierr = DMPlexPointGlobalRef(dmGrad,cells[i],grad,&cgrad[i]);CHKERRQ(ierr);
       }
+
+      delta[0] = r[1] - r[0]; // r
+      delta[1] = u[1] - u[0]; // u
+      delta[2] = v[1] - v[0]; // v
+      delta[3] = w[1] - w[0]; // w
+      delta[4] = E[1] - E[0]; // E
+
       for (i=0; i<dof; i++) {
-        PetscScalar delta = cx[1][i] - cx[0][i];
         for (j=0; j<DIM; j++) {
-          if (cgrad[0]) cgrad[0][i*DIM+j] += fg->grad[0][j] * delta;
-          if (cgrad[1]) cgrad[1][i*DIM+j] -= fg->grad[1][j] * delta;
+          if (cgrad[0]) cgrad[0][i*DIM+j] += fg->grad[0][j] * delta[i];
+          if (cgrad[1]) cgrad[1][i*DIM+j] -= fg->grad[1][j] * delta[i];
         }
       }
     }
@@ -723,14 +754,14 @@ Compute the gradient of the variables at the center of the cell
 by the least-square reconstruction method based on the function
 BuildLeastSquares.
 */
-PetscErrorCode ConstructCellCentriodGradientJacobian(DM dm,DM dmFace,DM dmCell,PetscReal time,Vec locX, PetscInt cell, PetscScalar CellValues[],User user)
+PetscErrorCode ConstructCellCentriodGradientJacobian(DM dm,DM dmFace,DM dmCell,PetscReal time,Vec locX, PetscInt cell, PetscReal CellValues[],User user)
 {
   DM                dmGrad = user->dmGrad;
   Model             mod    = user->model;
   Physics           phys   = mod->physics;
   const PetscInt    dof    = phys->dof;
   PetscErrorCode    ierr;
-  const PetscScalar *facegeom, *cellgeom, *x;
+  const PetscReal *facegeom, *cellgeom, *x;
   PetscInt          fStart, fEnd, face, cStart;
   PetscInt          numFaces;
   const PetscInt    *faces;
@@ -750,14 +781,14 @@ PetscErrorCode ConstructCellCentriodGradientJacobian(DM dm,DM dmFace,DM dmCell,P
   ierr = DMPlexGetCone(dm,cell,&faces);CHKERRQ(ierr);
 
   {
-    PetscScalar *grad;
+    PetscReal *grad;
     ierr = VecGetArray(Grad,&grad);CHKERRQ(ierr);
     /* Reconstruct gradients */
     for (face=0; face<numFaces; face++) {
       const PetscInt    *cells;
-      const PetscScalar *cx[2];
+      const PetscReal *cx[2];
       const FaceGeom    *fg;
-      PetscScalar       *cgrad[2];
+      PetscReal       *cgrad[2];
       PetscInt          i,j;
       PetscBool         ghost;
 
@@ -770,7 +801,7 @@ PetscErrorCode ConstructCellCentriodGradientJacobian(DM dm,DM dmFace,DM dmCell,P
         ierr = DMPlexPointGlobalRef(dmGrad,cells[i],grad,&cgrad[i]);CHKERRQ(ierr);
       }
       for (i=0; i<dof; i++) {
-        PetscScalar delta = cx[1][i] - cx[0][i];
+        PetscReal delta = cx[1][i] - cx[0][i];
         for (j=0; j<DIM; j++) {
           if (cgrad[0]) cgrad[0][i*DIM+j] += fg->grad[0][j] * delta;
           if (cgrad[1]) cgrad[1][i*DIM+j] -= fg->grad[1][j] * delta;
@@ -793,23 +824,36 @@ PetscErrorCode ConstructCellCentriodGradientJacobian(DM dm,DM dmFace,DM dmCell,P
 /*
 The internal energy per unit mass: e = E - 1/2*u*u
 */
-PetscErrorCode Energy(User user,const Node *x,PetscScalar *e)
+PetscErrorCode Energy(User user,const Node *x,PetscReal *e)
 {
-  PetscScalar  u[DIM]; // unscaled u
-  PetscScalar  E; // unscaled total energy
+  PetscReal  u[DIM]; // unscaled u
+  PetscReal  E; // unscaled total energy
   PetscInt     i;
-  PetscScalar  uu; // u dot u
+  PetscReal  uu; // u dot u
 
   PetscFunctionBeginUser;
 
-  for (i=0; i<DIM; i++) {
-    u[i] = x->ru[i]/x->r;
+  if (user->TimeIntegralMethod == EXPLICITMETHOD){
+    for (i=0; i<DIM; i++) {
+      u[i] = x->ru[i]/x->r;
+    }
+    E = x->rE/x->r;
+
+    uu = DotDIM(u, u);
+
+    (*e) = E - 0.5*uu;
+  }else{
+    for (i=0; i<DIM; i++) {
+      u[i] = x->ru[i];
+    }
+    E = x->rE;
+
+    uu = DotDIM(u, u);
+
+    (*e) = E - 0.5*uu;
   }
-  E = x->rE/x->r;
 
-  uu = DotDIM(u, u);
-
-  (*e) = E - 0.5*uu;
+  //printf("E = %f, uu =%f, e = %f\n", E, uu, *e);
 
   PetscFunctionReturn(0);
 }
@@ -824,10 +868,10 @@ and R is the gas constant which is 8.3144621 J K^{-1} mol^{-1}.
 Note that here x->rE is the rho scaled total energy per unit mass r*E,
 that is the total energy per unit volume
 */
-PetscErrorCode Pressure_Full(User user,const Node *x,PetscScalar *p)
+PetscErrorCode Pressure_Full(User user,const Node *x,PetscReal *p)
 {
   PetscErrorCode ierr;
-  PetscScalar e; // the internal energy per unit mass
+  PetscReal e; // the internal energy per unit mass
 
   PetscFunctionBeginUser;
 
@@ -836,8 +880,9 @@ PetscErrorCode Pressure_Full(User user,const Node *x,PetscScalar *p)
   // p = rho*(gamma - 1)*e
 
   (*p) = x->r*(user->adiabatic-1)*e;
+  //printf("p = %f\n", *p);
 
-  if(user->benchmark_couette) { (*p) = 1000;}
+  //if(user->benchmark_couette) { (*p) = 1.0/user->adiabatic;}
 
   PetscFunctionReturn(0);
 }
@@ -852,10 +897,10 @@ and R is the gas constant which is 8.3144621 J K^{-1} mol^{-1}.
 Note that here x->rE is the rho scaled total energy per unit mass r*E,
 that is the total energy per unit volume
 */
-PetscErrorCode Pressure_Partial(User user,const Node *x,PetscScalar *p)
+PetscErrorCode Pressure_Partial(User user,const Node *x,PetscReal *p)
 {
   PetscErrorCode ierr;
-  PetscScalar e; // the internal energy per unit mass
+  PetscReal e; // the internal energy per unit mass
 
   PetscFunctionBeginUser;
 
@@ -863,9 +908,9 @@ PetscErrorCode Pressure_Partial(User user,const Node *x,PetscScalar *p)
 
   // p = rho*(gamma - 1)*e
 
-  (*p) = x->r*(user->R)*e;
+  (*p) = x->r*(user->adiabatic-1)*e;
 
-  if(user->benchmark_couette) { (*p) = 1000;}
+  //if(user->benchmark_couette) { (*p) = 1.0/user->adiabatic;}
 
   PetscFunctionReturn(0);
 }
@@ -877,10 +922,10 @@ PetscErrorCode Pressure_Partial(User user,const Node *x,PetscScalar *p)
  density "\rho" and the pressure "p" is:
  p = c^2 \rho
 */
-PetscErrorCode SpeedOfSound_PG(User user,const Node *x,PetscScalar *c)
+PetscErrorCode SpeedOfSound_PG(User user,const Node *x,PetscReal *c)
 {
   PetscErrorCode ierr;
-  PetscScalar p;
+  PetscReal p;
 
   PetscFunctionBeginUser;
   if (user->includeenergy){
@@ -909,11 +954,11 @@ PetscErrorCode SpeedOfSound_PG(User user,const Node *x,PetscScalar *c)
 PetscErrorCode ConvectionFlux(User user,const PetscReal *n,const Node *x,Node *f)
 {
   PetscErrorCode ierr;
-  PetscScalar  u[DIM]; // unscaled u
-  PetscScalar  E; // unscaled total energy
-  PetscScalar  H; // unscaled stagnation
-  PetscScalar  Fcf[5], Fcg[5], Fch[5];
-  PetscScalar  p; //the pressure
+  PetscReal  u[DIM]; // unscaled u
+  PetscReal  E; // unscaled total energy
+  PetscReal  H; // unscaled stagnation
+  PetscReal  Fcf[5], Fcg[5], Fch[5];
+  PetscReal  p; //the pressure
   PetscInt     i;
 
   PetscFunctionBeginUser;
@@ -927,32 +972,57 @@ PetscErrorCode ConvectionFlux(User user,const PetscReal *n,const Node *x,Node *f
      but in the flux, we need the stagnation (total, enthalpy) which defined as:
      H = E + p/r,
  */
+  if (user->TimeIntegralMethod == EXPLICITMETHOD){
+    for (i=0; i<DIM; i++) {
+      u[i] = x->ru[i]/x->r;
+    }
+    E = x->rE/x->r;
 
-  for (i=0; i<DIM; i++) {
-    u[i] = x->ru[i]/x->r;
-  }
-  E = x->rE/x->r;
+    if(user->PressureFlux){
+      ierr = Pressure_Full(user,x,&p);CHKERRQ(ierr); /* conpute the pressure */
+    }else{
+      p = 0.0;
+    }
 
+    H = E + p/x->r;
 
-  if(user->PressureFlux){
-    ierr = Pressure_Full(user,x,&p);CHKERRQ(ierr); /* conpute the pressure */
+    Fcf[0] = x->ru[0];          Fcg[0] = x->ru[1];          Fch[0] = x->ru[2];         /* rho*u,       rho*v,       rho*w       */
+    Fcf[1] = x->ru[0]*u[0] + p; Fcg[1] = x->ru[1]*u[0];     Fch[1] = x->ru[2]*u[0];    /* rho*u*u + p, rho*v*u,     rho*w*u     */
+    Fcf[2] = x->ru[0]*u[1];     Fcg[2] = x->ru[1]*u[1] + p; Fch[2] = x->ru[2]*u[1];    /* rho*u*v,     rho*v*v + p, rho*w*v     */
+    Fcf[3] = x->ru[0]*u[2];     Fcg[3] = x->ru[1]*u[2];     Fch[3] = x->ru[2]*u[2] + p;/* rho*u*w,     rho*v*w,     rho*w*w + p */
+    Fcf[4] = x->ru[0]*H;        Fcg[4] = x->ru[1]*H;        Fch[4] = x->ru[2]*H;       /* rho*u*H,     rho*v*H,     rho*w*H     */
+    //printf("n=(%f, %f, %f), u=(%f, %f, %f), p = %f, H = %f, E = %f \n", n[0], n[1], n[2], x->ru[0], x->ru[1], x->ru[2], p, H, E);
+    f->r     = (n[0]*Fcf[0] + n[1]*Fcg[0] + n[2]*Fch[0]); /* for the continuty equation   */
+    f->ru[0] = (n[0]*Fcf[1] + n[1]*Fcg[1] + n[2]*Fch[1]); /* for the momentum equations x */
+    f->ru[1] = (n[0]*Fcf[2] + n[1]*Fcg[2] + n[2]*Fch[2]); /* for the momentum equations y */
+    f->ru[2] = (n[0]*Fcf[3] + n[1]*Fcg[3] + n[2]*Fch[3]); /* for the momentum equations z */
+    f->rE    = (n[0]*Fcf[4] + n[1]*Fcg[4] + n[2]*Fch[4]); /* for the energy equation      */
+    //printf("f=(%f, %f, %f, %f, %f )\n", f->r, f->ru[0], f->ru[1], f->ru[2], f->rE);
   }else{
-    p = 0.0;
+
+    E = x->rE;
+
+    if(user->PressureFlux){
+      ierr = Pressure_Full(user,x,&p);CHKERRQ(ierr); /* conpute the pressure */
+    }else{
+      p = 0.0;
+    }
+
+    H = E + p/x->r;
+
+    Fcf[0] = x->r*x->ru[0];              Fcg[0] = x->r*x->ru[1];              Fch[0] = x->r*x->ru[2];             /* rho*u,       rho*v,       rho*w       */
+    Fcf[1] = x->r*x->ru[0]*x->ru[0] + p; Fcg[1] = x->r*x->ru[1]*x->ru[0];     Fch[1] = x->r*x->ru[2]*x->ru[0];    /* rho*u*u + p, rho*v*u,     rho*w*u     */
+    Fcf[2] = x->r*x->ru[0]*x->ru[1];     Fcg[2] = x->r*x->ru[1]*x->ru[1] + p; Fch[2] = x->r*x->ru[2]*x->ru[1];    /* rho*u*v,     rho*v*v + p, rho*w*v     */
+    Fcf[3] = x->r*x->ru[0]*x->ru[2];     Fcg[3] = x->r*x->ru[1]*x->ru[2];     Fch[3] = x->r*x->ru[2]*x->ru[2] + p;/* rho*u*w,     rho*v*w,     rho*w*w + p */
+    Fcf[4] = x->r*x->ru[0]*H;            Fcg[4] = x->r*x->ru[1]*H;            Fch[4] = x->r*x->ru[2]*H;       /* rho*u*H,     rho*v*H,     rho*w*H     */
+    //printf("n=(%f, %f, %f), u=(%f, %f, %f), p = %f, H = %f, E = %f \n", n[0], n[1], n[2], x->ru[0], x->ru[1], x->ru[2], p, H, E);
+    f->r     = (n[0]*Fcf[0] + n[1]*Fcg[0] + n[2]*Fch[0]); /* for the continuty equation   */
+    f->ru[0] = (n[0]*Fcf[1] + n[1]*Fcg[1] + n[2]*Fch[1]); /* for the momentum equations x */
+    f->ru[1] = (n[0]*Fcf[2] + n[1]*Fcg[2] + n[2]*Fch[2]); /* for the momentum equations y */
+    f->ru[2] = (n[0]*Fcf[3] + n[1]*Fcg[3] + n[2]*Fch[3]); /* for the momentum equations z */
+    f->rE    = (n[0]*Fcf[4] + n[1]*Fcg[4] + n[2]*Fch[4]); /* for the energy equation      */
+    //printf("f=(%f, %f, %f, %f, %f )\n", f->r, f->ru[0], f->ru[1], f->ru[2], f->rE);
   }
-
-  H = E + p/x->r;
-
-  Fcf[0] = x->ru[0];          Fcg[0] = x->ru[1];          Fch[0] = x->ru[2];         /* rho*u,       rho*v,       rho*w       */
-  Fcf[1] = x->ru[0]*u[0] + p; Fcg[1] = x->ru[1]*u[0];     Fch[1] = x->ru[2]*u[0];    /* rho*u*u + p, rho*v*u,     rho*w*u     */
-  Fcf[2] = x->ru[0]*u[1];     Fcg[2] = x->ru[1]*u[1] + p; Fch[2] = x->ru[2]*u[1];    /* rho*u*v,     rho*v*v + p, rho*w*v     */
-  Fcf[3] = x->ru[0]*u[2];     Fcg[3] = x->ru[1]*u[2];     Fch[3] = x->ru[2]*u[2] + p;/* rho*u*w,     rho*v*w,     rho*w*w + p */
-  Fcf[4] = x->ru[0]*H;        Fcg[4] = x->ru[1]*H;        Fch[4] = x->ru[2]*H;       /* rho*u*T,     rho*v*T,     rho*w*T     */
-
-  f->r     = -(n[0]*Fcf[0] + n[1]*Fcg[0] + n[2]*Fch[0]); /* for the continuty equation   */
-  f->ru[0] = -(n[0]*Fcf[1] + n[1]*Fcg[1] + n[2]*Fch[1]); /* for the momentum equations x */
-  f->ru[1] = -(n[0]*Fcf[2] + n[1]*Fcg[2] + n[2]*Fch[2]); /* for the momentum equations y */
-  f->ru[2] = -(n[0]*Fcf[3] + n[1]*Fcg[3] + n[2]*Fch[3]); /* for the momentum equations z */
-  f->rE    = -(n[0]*Fcf[4] + n[1]*Fcg[4] + n[2]*Fch[4]); /* for the energy equation      */
 
   PetscFunctionReturn(0);
 }
@@ -961,19 +1031,30 @@ PetscErrorCode ConvectionFlux(User user,const PetscReal *n,const Node *x,Node *f
 #define __FUNCT__ "DiffusionFlux"
 /*
  * the flux for the diffusion term
+  Input Parameters:
+  + user  - The user defined contex
+  . cgradL, cgradR - The gradients at the centoid of the element on the left and right of the shared face
+  - fgc - The centroid coordinates of the face
+  + cgcL, cgcR - The centroid coordinates of the elements on the left and right of the face
+  . n - The outward normal direction of the face
+  - xL, cR - The value of the variables at the left and right cells
 
+  Output Parameters:
+  . f - The flux of the diffusion term on the face
  *
  * */
 PetscErrorCode DiffusionFlux(User user, const PetscReal *cgradL, const PetscReal *cgradR, const PetscReal *fgc, const PetscReal *cgcL, const PetscReal *cgcR,
       const PetscReal *n, const Node *xL, const Node *xR, Node *f)
 {
   PetscInt     i, j;
-  PetscReal    graduL[DIM][DIM], graduR[DIM][DIM];
-  PetscReal    gradTL[DIM], gradTR[DIM];
+  PetscReal    graduL[DIM][DIM], graduR[DIM][DIM]; // Gradient on the cell center
+  PetscReal    gradEL[DIM], gradER[DIM]; // Gradient on the cell center
   PetscReal    cgcAL[DIM], cgcAR[DIM];
   PetscReal    Dfl, Dfr, tempL[DIM], tempR[DIM];
   PetscReal    D[DIM], DiffL[DIM], DiffR[DIM];
-  PetscReal    gradU, gradV, gradW, gradT;
+  PetscReal    gradU, gradV, gradW, gradT; // Gradient on the Face center
+  PetscReal    uL, vL, wL, EL;
+  PetscReal    uR, vR, wR, ER;
 
   PetscFunctionBeginUser;
 
@@ -985,8 +1066,8 @@ PetscErrorCode DiffusionFlux(User user, const PetscReal *cgradL, const PetscReal
   }
 
   for (i=0; i<DIM; i++) {
-    gradTL[i] = cgradL[4*DIM + i];
-    gradTR[i] = cgradR[4*DIM + i];
+    gradEL[i] = cgradL[4*DIM + i];
+    gradER[i] = cgradR[4*DIM + i];
 
     tempL[i] = fgc[i] - cgcL[i];
     tempR[i] = fgc[i] - cgcR[i];
@@ -1006,11 +1087,22 @@ PetscErrorCode DiffusionFlux(User user, const PetscReal *cgradL, const PetscReal
   }/*The auxiliary nodes (See [Ferziger and Peric (2002)])*/
   if (NormDIM(D) < 1.e-8) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_OUTOFRANGE,"The distance of two elements is zero, check the mesh!");
 
+  if (user->TimeIntegralMethod == EXPLICITMETHOD){
+    uL = xL->ru[0]/xL->r;  uR = xR->ru[0]/xR->r;
+    vL = xL->ru[1]/xL->r;  vR = xR->ru[1]/xR->r;
+    wL = xL->ru[2]/xL->r;  wR = xR->ru[2]/xR->r;
+    EL = xL->rE/xL->r;     ER = xR->rE/xR->r;
+  }else{
+    uL = xL->ru[0];  uR = xR->ru[0];
+    vL = xL->ru[1];  vR = xR->ru[1];
+    wL = xL->ru[2];  wR = xR->ru[2];
+    EL = xL->rE;     ER = xR->rE;
+  }
 
-  gradU = (xL->ru[0] - xR->ru[0] + DotDIM(graduL[0], DiffL) - DotDIM(graduR[0], DiffR))/NormDIM(D);
-  gradV = (xL->ru[1] - xR->ru[1] + DotDIM(graduL[1], DiffL) - DotDIM(graduR[1], DiffR))/NormDIM(D);
-  gradW = (xL->ru[2] - xR->ru[2] + DotDIM(graduL[2], DiffL) - DotDIM(graduR[2], DiffR))/NormDIM(D);
-  gradT = (xL->rE - xR->rE + DotDIM(gradTL, DiffL) - DotDIM(gradTR, DiffR))/NormDIM(D);
+  gradU = (uL - uR + DotDIM(graduL[0], DiffL) - DotDIM(graduR[0], DiffR))/NormDIM(D); // Gradient u on the Face center
+  gradV = (vL - vR + DotDIM(graduL[1], DiffL) - DotDIM(graduR[1], DiffR))/NormDIM(D); // Gradient v on the Face center
+  gradW = (wL - wR + DotDIM(graduL[2], DiffL) - DotDIM(graduR[2], DiffR))/NormDIM(D); // Gradient w on the Face center
+  gradT = (EL - ER + DotDIM(gradEL, DiffL)    - DotDIM(gradER, DiffR))/NormDIM(D);    // Gradient E on the Face center
 
 
   f->r = 0; /*Since the continuity equation does not have diffusion term*/
@@ -1027,7 +1119,7 @@ PetscErrorCode DiffusionFlux(User user, const PetscReal *cgradL, const PetscReal
 
 
 #undef __FUNCT__
-#define __FUNCT__ "RiemannSolver_Rusanov"
+#define __FUNCT__ "RiemannSolver"
 /*@C
   This function is for the Rusanov type Riemann solver.
   speed = \max\{|\mathbf{u}_L| + c_L,  |\mathbf{u}_R| + c_R \},
@@ -1048,49 +1140,99 @@ PetscErrorCode DiffusionFlux(User user, const PetscReal *cgradL, const PetscReal
 
 @*/
 
-PetscErrorCode RiemannSolver_Rusanov(User user, const PetscScalar *cgradL, const PetscScalar *cgradR, const PetscReal *fgc, const PetscReal *cgcL, const PetscReal *cgcR, const PetscReal *n, const PetscScalar *xL, const PetscScalar *xR, PetscScalar *fluxcon, PetscScalar *fluxdiff)
+PetscErrorCode RiemannSolver(User user, const PetscReal *cgradL, const PetscReal *cgradR, const PetscReal *fgc, const PetscReal *cgcL, const PetscReal *cgcR, const PetscReal *n, const PetscReal *xL, const PetscReal *xR, PetscReal *fluxcon, PetscReal *fluxdiff)
 {
   PetscErrorCode  ierr;
-  PetscScalar     cL,cR,speed;
-  const Node      *uL = (const Node*)xL,*uR = (const Node*)xR;
+  PetscReal     cL,cR,speed;
+  const Node      *ruL = (const Node*)xL,*ruR = (const Node*)xR;
   Node            fLcon,fRcon;
   Node            fdiff;
   PetscInt        i;
+  PetscReal     uL[DIM], uR[DIM]; // velocity
 
   PetscFunctionBeginUser;
 
-  if (uL->r < 0 || uR->r < 0 || PetscAbsScalar(uL->r)<1.e-5 ||  PetscAbsScalar(uR->r)<1.e-5 ){
-    ierr = PetscPrintf(PETSC_COMM_WORLD, "WORNING: density goes to negative or zero!!! rL = %f, rR = %f \n", uL->r, uR->r);CHKERRQ(ierr);
+  if (ruL->r < 0 || ruR->r < 0 || PetscAbsScalar(ruL->r)<1.e-5 ||  PetscAbsScalar(ruR->r)<1.e-5 ){
+    ierr = PetscPrintf(PETSC_COMM_WORLD, "WORNING: density goes to negative or zero!!! rL = %f, rR = %f \n", ruL->r, ruR->r);CHKERRQ(ierr);
     //SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_OUTOFRANGE,"Reconstructed density is negative or zero");
   }
 
-  ierr = ConvectionFlux(user, n, uL, &fLcon);CHKERRQ(ierr);
-  ierr = ConvectionFlux(user, n, uR, &fRcon);CHKERRQ(ierr);
-  ierr = DiffusionFlux(user, cgradL, cgradR, fgc, cgcL, cgcR, n, uL, uR, &fdiff);CHKERRQ(ierr);
-  ierr = SpeedOfSound_PG(user,uL,&cL);CHKERRQ(ierr);
-  ierr = SpeedOfSound_PG(user,uR,&cR);CHKERRQ(ierr);
-  //speed = PetscMax(cL + PetscAbsScalar(DotDIM(uL->ru,n)/NormDIM(n)), cR + PetscAbsScalar(DotDIM(uR->ru,n)/NormDIM(n)));
-  speed = PetscMax(cL, cR) + PetscMax(PetscAbsScalar(DotDIM(uL->ru,n)/NormDIM(n)), PetscAbsScalar(DotDIM(uR->ru,n)/NormDIM(n)));
- // speed = 0.0;
- //  if (speed>0.0||speed<0.0)PetscPrintf(PETSC_COMM_WORLD, "normal = %f, speed = %f, cR = %f, cL = %f\n", NormDIM(n), speed, cR, cL);
-  for (i=0; i<2+DIM; i++) {
-    fluxcon[i] = 0.5*(fLcon.vals[i] + fRcon.vals[i]) + 0.5*speed*(xL[i] - xR[i]);
+  ierr = ConvectionFlux(user, n, ruL, &fLcon);CHKERRQ(ierr);
+  ierr = ConvectionFlux(user, n, ruR, &fRcon);CHKERRQ(ierr);
+  if(!user->Euler){
+    ierr = DiffusionFlux(user, cgradL, cgradR, fgc, cgcL, cgcR, n, ruL, ruR, &fdiff);CHKERRQ(ierr);
   }
-  for (i=0; i<2+DIM; i++) {
-    if (user->Euler) {
-      fluxdiff[i] = 0.0;
-    }else{
-      fluxdiff[i] = fdiff.vals[i];
+  ierr = SpeedOfSound_PG(user,ruL,&cL);CHKERRQ(ierr);
+  ierr = SpeedOfSound_PG(user,ruR,&cR);CHKERRQ(ierr);
+  //printf("speed of sound %f\n", cL);
+  if (user->TimeIntegralMethod == EXPLICITMETHOD){
+    for(i=0; i<DIM; i++){ // note that for the explicit method, the solution variable is density scaled: r, ru, rv, rw, rE
+      uL[i] = ruL->ru[i]/ruL->r; // unscaled velocity
+      uR[i] = ruR->ru[i]/ruR->r;
+    }
+  }else{ // Note that for the implicit method, we use the orignal variable for the solution vector: r, u, v, w, E
+    for(i=0; i<DIM; i++){
+      uL[i] = ruL->ru[i]; // unscaled velocity
+      uR[i] = ruR->ru[i];
     }
   }
-  fluxdiff[0] = 0; /*Since the continuity equation does not have diffusion term.*/
+
+// the Riemann solver setup
+  if(0 == strcasecmp(user->RiemannSolver, "Rusanov")){
+    speed = PetscMax(cL, cR) + PetscMax(PetscAbsScalar(DotDIM(uL,n)/NormDIM(n)), PetscAbsScalar(DotDIM(uR,n)/NormDIM(n)));
+    //speed = PetscMax(cL + PetscAbsScalar(DotDIM(uL->ru,n)/NormDIM(n)), cR + PetscAbsScalar(DotDIM(uR->ru,n)/NormDIM(n)));
+  }else if(0 == strcasecmp(user->RiemannSolver, "David")){
+    PetscReal temp, temp1, temp2, temp3, temp4;
+    temp1 = PetscAbsScalar(DotDIM(uL,n)/NormDIM(n) - cL);
+    temp2 = PetscAbsScalar(DotDIM(uR,n)/NormDIM(n) - cR);
+    temp3 = PetscAbsScalar(DotDIM(uL,n)/NormDIM(n) + cL);
+    temp4 = PetscAbsScalar(DotDIM(uR,n)/NormDIM(n) + cR);
+
+    temp = PetscMax(temp1, temp2);
+    temp = PetscMax(temp, temp3);
+    speed = PetscMax(temp, temp4);
+// speed = max(temp1, temp2, temp3, temp4)
+  }else if(0 == strcasecmp(user->RiemannSolver, "CFL")){
+    PetscReal dt, dx, dy, dz, dxyz;
+    dt = user->dt;
+    dx = PetscAbsScalar(cgcL[0] - cgcR[0]);
+    dy = PetscAbsScalar(cgcL[1] - cgcR[1]);
+    dz = PetscAbsScalar(cgcL[2] - cgcR[2]);
+
+    dxyz = PetscSqrtScalar(dx*dx + dy*dy + dz*dz);
+    speed = user->CFL*dxyz/dt;
+  }else{
+    speed = 0.0;
+  }
+
+// the convection terms
+  fluxcon[0] = 0.5*(fLcon.r + fRcon.r) + 0.5*speed*(ruL->r - ruR->r);                 // the continuity equation
+  fluxcon[1] = 0.5*(fLcon.ru[0] + fRcon.ru[0]) + 0.5*speed*(ruL->ru[0] - ruR->ru[0]); // the momentum equation x
+  fluxcon[2] = 0.5*(fLcon.ru[1] + fRcon.ru[1]) + 0.5*speed*(ruL->ru[1] - ruR->ru[1]); // the momentum equation y
+  fluxcon[3] = 0.5*(fLcon.ru[2] + fRcon.ru[2]) + 0.5*speed*(ruL->ru[2] - ruR->ru[2]); // the momentum equation z
+  fluxcon[4] = 0.5*(fLcon.rE + fRcon.rE) + 0.5*speed*(ruL->rE - ruR->rE);             // the energy equation
+
+  //printf("flux (%f, %f, %f, %f, %f)\n", fluxcon[0], fluxcon[1], fluxcon[2], fluxcon[3], fluxcon[4]);
+
+// the diffution terms
+  if (user->Euler) {
+    for (i=0; i<2+DIM; i++) {
+      fluxdiff[i] = 0.0;
+    }
+  }else{
+    fluxdiff[0] = 0; /*Since the continuity equation does not have diffusion term.*/
+    fluxdiff[1] = fdiff.ru[0]; // the momentum equation x
+    fluxdiff[2] = fdiff.ru[1]; // the momentum equation y
+    fluxdiff[3] = fdiff.ru[2]; // the momentum equation z
+    fluxdiff[4] = fdiff.rE;    // the energy equation
+  }
 
   PetscFunctionReturn(0);
 }
 
 #undef __FUNCT__
 #define __FUNCT__ "BoundaryInflow"
-PetscErrorCode BoundaryInflow(PetscReal time, const PetscReal *c, const PetscReal *n, const PetscScalar *xI, PetscScalar *xG, User user)
+PetscErrorCode BoundaryInflow(PetscReal time, const PetscReal *c, const PetscReal *n, const PetscReal *xI, PetscReal *xG, User user)
 {
   PetscErrorCode  ierr;
 
@@ -1099,11 +1241,34 @@ PetscErrorCode BoundaryInflow(PetscReal time, const PetscReal *c, const PetscRea
   if(user->benchmark_couette){
     ierr = ExactSolution(time, c, xG, user);CHKERRQ(ierr);
   }else{
-    xG[0] = xI[0]; /*Density*/
-    xG[1] = user->inflow_u; /*Velocity u (the x-direction)*/
-    xG[2] = user->inflow_v; /*Velocity v (the y-direction)*/
-    xG[3] = user->inflow_w; /*Velocity w (the z-direction)*/
-    xG[4] = xI[4]; /*Energy*/
+    PetscReal p, M, E, u, v, w, r, e, c;
+
+    r = 1.0; // density
+    u = user->inflow_u; /*Velocity u (the x-direction)*/
+    v = user->inflow_v; /*Velocity v (the y-direction)*/
+    w = user->inflow_w; /*Velocity w (the z-direction)*/
+
+    M = 0.8; // is the mach number
+    p = 1.0/(M*M*user->adiabatic); // is the pressure on the far field boundary
+    // Note that e = p/(\rho(\gamma - 1)) and E = e + 0.5*u*u
+    e = p/(r*(user->adiabatic - 1));
+    E =  e + 0.5*(u*u + v*v + w*w);
+    c = PetscSqrtScalar(user->adiabatic*PetscAbsScalar(p)/r);// speed of sound
+    //printf("speed of sound %f\n", c);
+
+    if (user->TimeIntegralMethod == EXPLICITMETHOD) {
+      xG[0] = r; /*Density*/
+      xG[1] = r*u*M; /*Velocity u (the x-direction)*/
+      xG[2] = r*v*M; /*Velocity v (the y-direction)*/
+      xG[3] = r*w*M; /*Velocity w (the z-direction)*/
+      xG[4] = r*E; /*Energy*/
+    }else{
+      xG[0] = r; /*Density*/
+      xG[1] = u*M; /*Velocity u (the x-direction)*/
+      xG[2] = v*M; /*Velocity v (the y-direction)*/
+      xG[3] = w*M; /*Velocity w (the z-direction)*/
+      xG[4] = E; /*Energy*/
+    }
   }
   //printf("inlet: (%f, %f, %f)\n", c[0], c[1], c[2]);
 
@@ -1112,7 +1277,7 @@ PetscErrorCode BoundaryInflow(PetscReal time, const PetscReal *c, const PetscRea
 
 #undef __FUNCT__
 #define __FUNCT__ "BoundaryOutflow"
-PetscErrorCode BoundaryOutflow(PetscReal time, const PetscReal *c, const PetscReal *n, const PetscScalar *xI, PetscScalar *xG, User user)
+PetscErrorCode BoundaryOutflow(PetscReal time, const PetscReal *c, const PetscReal *n, const PetscReal *xI, PetscReal *xG, User user)
 {
   PetscErrorCode  ierr;
 
@@ -1121,11 +1286,11 @@ PetscErrorCode BoundaryOutflow(PetscReal time, const PetscReal *c, const PetscRe
   if(user->benchmark_couette){
     ierr = ExactSolution(time, c, xG, user);CHKERRQ(ierr);
   }else{
-    xG[0] = xI[0]; /*Density*/
-    xG[1] = xI[1]; /*Velocity u (the x-direction)*/
+    xG[0] = 1.0; /*Density*/
+    xG[1] = 0; /*Velocity u (the x-direction)*/
     xG[2] = xI[2]; /*Velocity v (the y-direction)*/
-    xG[3] = xI[3]; /*Velocity w (the z-direction)*/
-    xG[4] = xI[4]; /*Energy*/
+    xG[3] = 0; /*Velocity w (the z-direction)*/
+    xG[4] = 1.0; /*Energy*/
   }
   //printf("outlet: (%f, %f, %f)\n", c[0], c[1], c[2]);
 
@@ -1134,7 +1299,7 @@ PetscErrorCode BoundaryOutflow(PetscReal time, const PetscReal *c, const PetscRe
 
 #undef __FUNCT__
 #define __FUNCT__ "BoundaryWallflow"
-PetscErrorCode BoundaryWallflow(PetscReal time, const PetscReal *c, const PetscReal *n, const PetscScalar *xI, PetscScalar *xG, User user)
+PetscErrorCode BoundaryWallflow(PetscReal time, const PetscReal *c, const PetscReal *n, const PetscReal *xI, PetscReal *xG, User user)
 {
   PetscErrorCode  ierr;
 
@@ -1143,11 +1308,31 @@ PetscErrorCode BoundaryWallflow(PetscReal time, const PetscReal *c, const PetscR
   if(user->benchmark_couette){
     ierr = ExactSolution(time, c, xG, user);CHKERRQ(ierr);
   }else{
-    xG[0] = xI[0]; /*Density*/
-    xG[1] = 0.0; /*Velocity u (the x-direction)*/
-    xG[2] = 0.0; /*Velocity v (the y-direction)*/
-    xG[3] = 0.0; /*Velocity w (the z-direction)*/
-    xG[4] = xI[4]; /*Energy*/
+    PetscReal xn[DIM],xt[DIM];
+    PetscReal T, e, u, v, w, r, E; // the timperature
+    T = 300;
+    u = 0.0;
+    v = 0.0;
+    w = 0.0;
+    r = xI[0];
+    e = user->R*T/(user->adiabatic - 1);
+
+    E =  e + 0.5*(u*u + v*v + w*w);
+
+    NormalSplitDIM(n,xI+1,xn,xt);
+    if (user->TimeIntegralMethod == EXPLICITMETHOD) {
+      xG[0] = 1.0; /*Density*/
+      xG[1] = r*u; /*Velocity u (the x-direction)*/
+      xG[2] = r*v; /*Velocity v (the y-direction)*/
+      xG[3] = r*w; /*Velocity w (the z-direction)*/
+      xG[4] = r*E; /*Energy*/
+    }else{
+      xG[0] = 1.0; /*Density*/
+      xG[1] = u; /*Velocity u (the x-direction)*/
+      xG[2] = v; /*Velocity v (the y-direction)*/
+      xG[3] = w; /*Velocity w (the z-direction)*/
+      xG[4] = E; /*Energy*/
+    }
   }
   //printf("wall: (%f, %f, %f)\n", c[0], c[1], c[2]);
 
@@ -1156,34 +1341,37 @@ PetscErrorCode BoundaryWallflow(PetscReal time, const PetscReal *c, const PetscR
 
 #undef __FUNCT__
 #define __FUNCT__ "InitialCondition"
-PetscErrorCode InitialCondition(PetscReal time, const PetscReal *x, PetscScalar *u, User user)
+PetscErrorCode InitialCondition(PetscReal time, const PetscReal *x, PetscReal *u, User user)
 {
   PetscInt i;
 
   PetscFunctionBeginUser;
   if (time != 0.0) SETERRQ1(PETSC_COMM_WORLD,PETSC_ERR_SUP,"No solution known for time %g",time);
   if(user->benchmark_couette){
-    PetscScalar U, H, T;
-    PetscScalar y;
+
+    PetscReal U, H, T;
+    PetscReal y;
 
     y = x[1];
 
     U = 0.3; H = 10;
     T = user->T0 + (y/H)*(user->T1 - user->T0) + (user->viscosity*U*U)/(2*user->k)*(y/H)*(1.0 - y/H);
 
-    u[0] = 1.0/T; /*Density*/
-    u[1] = u[0]*y*U/H + 0.001; /*Velocity rho*u (the x-direction)*/
-    u[2] = 0.0; /*Velocity v (the y-direction)*/
-    u[3] = 0.0; /*Velocity w (the z-direction)*/
-    u[4] = 1.0/(user->adiabatic*(user->adiabatic-1)) + 0.5*u[0]*(u[1]*u[1]+u[2]*u[2]+u[3]*u[3]); /*the density total energy rho*E = rho*e + 0.5*rho*|u|^2 = rho*(p/(rho*(gamma-1))) + 0.5*rho*|u|^2*/
+    u[0] = 1.0/T; // Density
+    u[1] = u[0]*y*U/H + 0.001; // Velocity rho*u (the x-direction)
+    u[2] = 0.0; // Velocity v (the y-direction)
+    u[3] = 0.0; // Velocity w (the z-direction)
+    u[4] = 1.0/(user->adiabatic*(user->adiabatic-1)) + 0.5*(u[1]*u[1]+u[2]*u[2]+u[3]*u[3])/u[0]; //the density total energy rho*E = rho*e + 0.5*rho*|u|^2 = rho*(p/(rho*(gamma-1))) + 0.5*rho*|u|^2
 
     u[1] = 0;
-    //PetscErrorCode  ierr;
-    //ierr = ExactSolution(time, x, u, user);CHKERRQ(ierr);
+
+    PetscErrorCode  ierr;
+    ierr = ExactSolution(time, x, u, user);CHKERRQ(ierr);
   }else{
-    u[0]     = 1.0; /* Density */
-    u[DIM+1] = 1.0+PetscAbsReal(x[0]); /* Energy */
+    u[0]     = 1.185; /* Density */
+    u[DIM+1] = 1.0; /* Energy */
     for (i=1; i<DIM+1; i++) u[i] = 0.0; /* Momentum */
+    u[1] = user->inflow_u*0.8;
   }
   PetscFunctionReturn(0);
 }
@@ -1335,17 +1523,21 @@ PetscErrorCode  TSMonitorFunctionError(TS ts,PetscInt step,PetscReal ptime,Vec u
       //ierr =  PetscMallocGetCurrentUsage(&space);CHKERRQ(ierr);
       //ierr =  PetscPrintf(PETSC_COMM_WORLD,"Current space PetscMalloc()ed %g M\n", space/(1024*1024));CHKERRQ(ierr);
   }
-
+  user->current_time = ptime;
   // output the solution
   if (user->output_solution && (step%user->steps_output==0)){
     PetscViewer    viewer;
+    Vec            solution_unscaled; // Note the the u is scaled by the density, so this is for the unscaled solution
 
     nplot = step/user->steps_output;
     // update file name for the current time step
+    ierr = VecDuplicate(u, &solution_unscaled);CHKERRQ(ierr);
+    ierr = ReformatSolution(u, solution_unscaled, user);CHKERRQ(ierr);
     ierr = PetscSNPrintf(fileName, sizeof(fileName),"%s_%d.vtk",user->solutionfile, nplot);CHKERRQ(ierr);
     ierr = PetscPrintf(PETSC_COMM_WORLD,"Outputing solution %s (current time %f)\n", fileName, ptime);CHKERRQ(ierr);
     ierr = OutputVTK(user->dm, fileName, &viewer);CHKERRQ(ierr);
-    ierr = VecView(u, viewer);CHKERRQ(ierr);
+    ierr = VecView(solution_unscaled, viewer);CHKERRQ(ierr);
+    ierr = VecDestroy(&solution_unscaled);CHKERRQ(ierr);
     ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
   }
 
@@ -1354,27 +1546,33 @@ PetscErrorCode  TSMonitorFunctionError(TS ts,PetscInt step,PetscReal ptime,Vec u
 
 #undef __FUNCT__
 #define __FUNCT__ "ExactSolution"
-PetscErrorCode ExactSolution(PetscReal time, const PetscReal *c, PetscScalar *xc, User user)
+PetscErrorCode ExactSolution(PetscReal time, const PetscReal *c, PetscReal *xc, User user)
 {
-  PetscScalar U, H, T;
-  PetscScalar y;
+  PetscReal U, H, T, u;
+  PetscReal y;
 
   PetscFunctionBeginUser;
 
   y = c[1];
-
   U = 0.3; H = 10;
+
+  u = y*U/H;
   T = user->T0 + (y/H)*(user->T1 - user->T0) + (user->viscosity*U*U)/(2*user->k)*(y/H)*(1.0 - y/H);
+  // T = 1;
 
-  xc[0] = 1.0/T; /*Density*/
-  xc[1] = xc[0]*y*U/H; /*Velocity rho*u (the x-direction)*/
-  xc[2] = 0.0; /*Velocity v (the y-direction)*/
-  xc[3] = 0.0; /*Velocity w (the z-direction)*/
-  xc[4] = 1.0/(user->adiabatic*(user->adiabatic-1)) + 0.5*xc[0]*(xc[1]*xc[1]+xc[2]*xc[2]+xc[3]*xc[3]); /*the density total energy rho*E = rho*e + 0.5*rho*|u|^2 = rho*(p/(rho*(gamma-1))) + 0.5*rho*|u|^2*/
-
-  //xc[0] = 1.0; /*Density*/
-  //xc[1] = 1.0;
-  //xc[4] = 1.0;
+  if(user->TimeIntegralMethod == IMPLICITMETHOD){
+    xc[0] = 1.0/T; /*Density*/
+    xc[1] = u; /*Velocity rho*u (the x-direction)*/
+    xc[2] = 0.0; /*Velocity v (the y-direction)*/
+    xc[3] = 0.0; /*Velocity w (the z-direction)*/
+    xc[4] = 1.0/(user->adiabatic*(user->adiabatic-1))/xc[0] + 0.5*(xc[1]*xc[1]+xc[2]*xc[2]+xc[3]*xc[3]); /*the density total energy rho*E = rho*e + 0.5*rho*|u|^2 = rho*(p/(rho*(gamma-1))) + 0.5*rho*|u|^2*/
+  }else{
+    xc[0] = 1.0/T; /*Density*/
+    xc[1] = xc[0]*u; /*Velocity rho*u (the x-direction)*/
+    xc[2] = 0.0; /*Velocity v (the y-direction)*/
+    xc[3] = 0.0; /*Velocity w (the z-direction)*/
+    xc[4] = 1.0/(user->adiabatic*(user->adiabatic-1)) + 0.5*(xc[1]*xc[1]+xc[2]*xc[2]+xc[3]*xc[3])/xc[0]; /*the density total energy rho*E = rho*e + 0.5*rho*|u|^2 = rho*(p/(rho*(gamma-1))) + 0.5*rho*|u|^2*/
+  }
 
   PetscFunctionReturn(0);
 }

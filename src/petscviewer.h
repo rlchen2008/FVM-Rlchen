@@ -339,7 +339,7 @@ PETSC_STATIC_INLINE PetscErrorCode PetscViewerFlowControlStepWorker(PetscViewer 
   MPI_Comm       comm;
   PetscFunctionBegin;
   ierr = PetscObjectGetComm((PetscObject)viewer,&comm);CHKERRQ(ierr);
-  while (PETSC_TRUE) { 
+  while (PETSC_TRUE) {
     if (rank < *mcnt) break;
     ierr = MPI_Bcast(mcnt,1,MPIU_INT,0,comm);CHKERRQ(ierr);
   }

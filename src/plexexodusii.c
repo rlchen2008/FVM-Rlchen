@@ -78,7 +78,7 @@ PetscErrorCode DMPlexCreateExodus(MPI_Comm comm, PetscInt exoid, PetscBool inter
   PetscMPIInt    num_proc, rank;
   PetscSection   coordSection;
   Vec            coordinates;
-  PetscScalar    *coords;
+  PetscReal    *coords;
   PetscInt       coordSize, v;
   PetscErrorCode ierr;
   /* Read from ex_get_init() */

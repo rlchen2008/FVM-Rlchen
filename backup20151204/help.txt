@@ -1,0 +1,159 @@
+Second Order TVD Finite Volume Example.
+--------------------------------------------------------------------------
+Petsc Release Version 3.5.2, unknown 
+       The PETSc Team
+    petsc-maint@mcs.anl.gov
+ http://www.mcs.anl.gov/petsc/
+See docs/changes/index.html for recent updates.
+See docs/faq.html for problems.
+See docs/manualpages/index.html for help. 
+Libraries linked from /home/rlchen/soft/petsc-3.5.2/64bit-debug/lib
+--------------------------------------------------------------------------
+Options for all PETSc programs:
+ -help: prints help method for each option
+ -on_error_abort: cause an abort when an error is detected. Useful 
+        only when run in the debugger
+ -on_error_attach_debugger [gdb,dbx,xxgdb,ups,noxterm]
+       start the debugger in new xterm
+       unless noxterm is given
+ -start_in_debugger [gdb,dbx,xxgdb,ups,noxterm]
+       start all processes in the debugger
+ -on_error_emacs <machinename>
+    emacs jumps to error file
+ -debugger_nodes [n1,n2,..] Nodes to start in debugger
+ -debugger_pause [m] : delay (in seconds) to attach debugger
+ -stop_for_debugger : prints message on how to attach debugger manually
+                      waits the delay for you to attach
+ -display display: Location where X window graphics and debuggers are displayed
+ -no_signal_handler: do not trap error signals
+ -mpi_return_on_error: MPI returns error code, rather than abort on internal error
+ -fp_trap: stop on floating point exceptions
+           note on IBM RS6000 this slows run greatly
+ -malloc_dump <optional filename>: dump list of unfreed memory at conclusion
+ -malloc: use our error checking malloc
+ -malloc no: don't use error checking malloc
+ -malloc_info: prints total memory usage
+ -malloc_log: keeps log of all memory allocations
+ -malloc_debug: enables extended checking for memory corruption
+ -options_table: dump list of options inputted
+ -options_left: dump list of unused options
+ -options_left no: don't dump list of unused options
+ -tmp tmpdir: alternative /tmp directory
+ -shared_tmp: tmp directory is shared by all processors
+ -not_shared_tmp: each processor has separate tmp directory
+ -memory_info: print memory usage at end of run
+ -server <port>: Run PETSc webserver (default port is 8080) see PetscWebServe()
+ -get_total_flops: total flops over all processors
+ -log[_summary _summary_python]: logging objects and events
+ -log_trace [filename]: prints trace of all PETSc calls
+ -info <optional filename>: print informative messages about the calculations
+ -v: prints PETSc version number and release date
+ -options_file <file>: reads options from file
+ -petsc_sleep n: sleeps n seconds before running program
+-----------------------------------------------
+------Additional PETSc component options--------
+ -log_summary_exclude: <vec,mat,pc.ksp,snes>
+ -info_exclude: <null,vec,mat,pc,ksp,snes,ts>
+-----------------------------------------------
+Options database options -------------------------------------------------
+  -options_monitor <stdout>: Monitor options database (PetscOptionsMonitorSet)
+  -options_monitor_cancel: <FALSE> Cancel all options database monitors (PetscOptionsMonitorCancel)
+Physics Model Options -------------------------------------------------
+  -includeenergy: <FALSE> Including the Energy fields ()
+  -kinematic_dof <3>: Kinematic Degrees of freedom, for the monoatomic gas, kinematic_dof = 3 and for a diatomic gas, kinematic_dof = 5 ()
+  -adiabatic <1.67>: Heat capacity ratio or called adiabatic ()
+  -R <8.31446>: The gas constant which is 8.3144621 J K^{-1} mol^{-1} for the state equation ()
+  -viscosity <0.1>: The viscosity of the flow ()
+  -k <0.026>: the thermal conductivity coefficient ()
+  -inflow <1>: the inflow velocity ()
+Unstructured Finite Volume Mesh Options -------------------------------------------------
+  -f <meshes/3DDrivencavityFVM64.exo>: Exodus.II filename to read ()
+  -vtk_cellgeom: <FALSE> Write cell geometry (for debugging) ()
+  -overlap <1>: Number of cells to overlap partitions ()
+Unstructured Finite Volume Method Options -------------------------------------------------
+  -reconstruct: <FALSE> Reconstruct gradients for a second order method (grows stencil) ()
+  -time_integral_method <0>: Method for the time integral, 0 for the explicit method and 1 for the implicit method ()
+  -timestep <0>: Scheme for the implicit time integral: backward Euler, BDF2, ... ()
+  -output_solution: <FALSE> output the solution to a file ()
+  -JdiffP: <FALSE> The preconditioner matrix is different from the Jacobian matrix ()
+  -dt <0.001>: The time step size ()
+  -initial_time <0>: The initial time ()
+  -final_time <1>: The final time ()
+  -second_order: <FALSE> Use the second order scheme by using the reconstruction ()
+  -fd_jacobian: <FALSE> Use the PETSc default finite difference method to construct the Jacobian matrix ()
+Thread comm - setting number of threads -------------------------------------------------
+  -threadcomm_nthreads <1>: number of threads to use in the thread communicator (PetscThreadCommSetNThreads)
+Thread comm - setting thread affinities -------------------------------------------------
+  -threadcomm_affinities <0>: Set core affinities of threads (PetscThreadCommSetAffinities)
+Thread comm - setting number of kernels -------------------------------------------------
+  -threadcomm_nkernels <16>: number of kernels that can be launched simultaneously ()
+Thread comm - setting threading model -------------------------------------------------
+  -threadcomm_type <nothread>: Thread communicator model (one of) nothread (PetscThreadCommSetType)
+Star Forest (PetscSF) options -------------------------------------------------
+  -sf_type <basic>: PetscSF implementation type (one of) window basic (PetscSFSetType)
+  -sf_rank_order: <TRUE> sort composite points for gathers and scatters in rank order, gathers are non-deterministic otherwise (PetscSFSetRankOrder)
+  PetscSF Basic options
+Star Forest (PetscSF) options -------------------------------------------------
+  -sf_type <basic>: PetscSF implementation type (one of) window basic (PetscSFSetType)
+  -sf_rank_order: <TRUE> sort composite points for gathers and scatters in rank order, gathers are non-deterministic otherwise (PetscSFSetRankOrder)
+  PetscSF Basic options
+Distribution Manager (DM) options -------------------------------------------------
+  -dm_preallocate_only: <FALSE> only preallocate matrix, but do not set column indices (DMSetMatrixPreallocateOnly)
+  -dm_vec_type <standard>: Vector type used for created vectors (one of) seq mpi standard shared (DMSetVecType)
+  -dm_mat_type <aij>: Matrix type used for created matrices (one of) mffd mpimaij seqmaij maij is shell composite mpiaij
+      seqaij mpiaijperm seqaijperm seqaijcrl mpiaijcrl mpibaij seqbaij mpisbaij seqsbaij mpibstrm seqbstrm mpisbstrm seqsbstrm mpidense seqdense mpiadj scatter blockmat nest (DMSetMatType)
+  -dm_is_coloring_type <global> (choose one of) global ghosted (ISColoringType)
+  DMPlex Options
+  -dm_refine <0>: The number of uniform refinements (DMCreate)
+  -dm_refine_hierarchy <0>: The number of uniform refinements (DMCreate)
+Boundary condition options -------------------------------------------------
+Limiter type: none 
+Using the fully explicit method
+Time stepping (TS) options -------------------------------------------------
+  -ts_type <ssp>: TS method (one of) euler beuler cn pseudo gl ssp theta alpha
+      rk arkimex rosw eimex ( TSSetType)
+  -ts_max_steps <1000>: Maximum number of time steps (TSSetDuration)
+  -ts_final_time <0.1>: Time to run to (TSSetDuration)
+  -ts_init_time <0>: Initial time (TSSetTime)
+  -ts_dt <0.001>: Initial time step (TSSetTimeStep)
+  -ts_exact_final_time <STEPOVER> (choose one of) STEPOVER INTERPOLATE MATCHSTEP (TSSetExactFinalTime)
+  -ts_max_snes_failures <1>: Maximum number of nonlinear solve failures (TSSetMaxSNESFailures)
+  -ts_max_reject <10>: Maximum number of step rejections before step fails (TSSetMaxStepRejections)
+  -ts_error_if_step_fails: <TRUE> Error if no step succeeds (TSSetErrorIfStepFails)
+  -ts_rtol <0.0001>: Relative tolerance for local truncation error (TSSetTolerances)
+  -ts_atol <0.0001>: Absolute tolerance for local truncation error (TSSetTolerances)
+  -ts_monitor <stdout>: Monitor timestep size (TSMonitorDefault)
+  -ts_monitor_python <(null)>: Use Python function (TSMonitorSet)
+  -ts_monitor_lg_timestep: Monitor timestep size graphically (TSMonitorLGTimeStep)
+  -ts_monitor_lg_solution: Monitor solution graphically (TSMonitorLGSolution)
+  -ts_monitor_lg_error: Monitor error graphically (TSMonitorLGError)
+  -ts_monitor_lg_snes_iterations: Monitor number nonlinear iterations for each timestep graphically (TSMonitorLGSNESIterations)
+  -ts_monitor_lg_ksp_iterations: Monitor number nonlinear iterations for each timestep graphically (TSMonitorLGKSPIterations)
+  -ts_monitor_sp_eig: Monitor eigenvalues of linearized operator graphically (TSMonitorSPEig)
+  -ts_monitor_draw_solution: Monitor solution graphically (TSMonitorDrawSolution)
+  -ts_monitor_draw_solution_phase: Monitor solution graphically (TSMonitorDrawSolutionPhase)
+  -ts_monitor_draw_error: Monitor error graphically (TSMonitorDrawError)
+  -ts_monitor_solution_binary <(null)>: Save each solution to a binary file (TSMonitorSolutionBinary)
+  -ts_monitor_solution_vtk <(null)>: Save each time step to a binary file, use filename-%%03D.vts (TSMonitorSolutionVTK)
+  -ts_monitor_dmda_ray <y=0>: Display a ray of the solution (None)
+  -ts_monitor_lg_dmda_ray <x=0>: Display a ray of the solution (None)
+  TS Adaptivity options
+  -ts_adapt_type <basic>: Algorithm to use for adaptivity (one of) basic none cfl (TSAdaptSetType)
+  Basic adaptive controller options
+  -ts_adapt_basic_clip <0.1>: Admissible decrease/increase in step size ()
+  -ts_adapt_basic_safety <0.9>: Safety factor relative to target error ()
+  -ts_adapt_basic_reject_safety <0.5>: Extra safety factor to apply if the last step was rejected ()
+  -ts_adapt_basic_always_accept: <FALSE> Always accept the step regardless of whether local truncation error meets goal ()
+  -ts_adapt_dt_min <1e-20>: Minimum time step considered (TSAdaptSetStepLimits)
+  -ts_adapt_dt_max <1e+50>: Maximum time step considered (TSAdaptSetStepLimits)
+  -ts_adapt_scale_solve_failed <0.25>: Scale step by this factor if solve fails ()
+  -ts_adapt_monitor: <FALSE> Print choices made by adaptive controller (TSAdaptSetMonitor)
+TS Object: 2 MPI processes
+  type: euler
+  maximum steps=1
+  maximum time=0.1
+  total number of nonlinear solver iterations=0
+  total number of nonlinear solve failures=0
+  total number of linear solver iterations=0
+  total number of rejected steps=0
+CONVERGED_ITS at time 0.001 after 1 steps

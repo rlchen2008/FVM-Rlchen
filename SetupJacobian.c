@@ -32,17 +32,55 @@ PetscErrorCode FormJacobian(SNES snes, Vec g, Mat jac, Mat B, void *ctx)
   //ierr = MatCreateSNESMF(snes,&jac);CHKERRQ(ierr);
 
   if (user->fd_jacobian) {  /* compute the Jacobian using FD */
-//    PetscPrintf(PETSC_COMM_WORLD,"Form Jacobian\n");
+    PetscPrintf(PETSC_COMM_WORLD,"Form Jacobian\n");
     ierr = SNESComputeJacobianDefault(snes, g, jac, jac, (void*) ctx);CHKERRQ(ierr);
-    ierr = SNESSetTolerances(snes,PETSC_DEFAULT,PETSC_DEFAULT,PETSC_DEFAULT,PETSC_DEFAULT,1.e6);CHKERRQ(ierr);
-//    MatView(jac,PETSC_VIEWER_STDOUT_WORLD);
+    //ierr = SNESSetTolerances(snes,PETSC_DEFAULT,PETSC_DEFAULT,PETSC_DEFAULT,PETSC_DEFAULT,1.e6);CHKERRQ(ierr);
+    #if 1
+      PetscViewer viewer;
+      char filename[256];
+      sprintf(filename,"matJac.m");
+      ierr = PetscViewerASCIIOpen(PETSC_COMM_WORLD,filename,
+                              &viewer);CHKERRQ(ierr);
+      ierr = PetscViewerSetFormat(viewer, PETSC_VIEWER_DEFAULT);CHKERRQ(ierr);
+      ierr = PetscViewerSetFormat(viewer, PETSC_VIEWER_ASCII_MATLAB);CHKERRQ(ierr);
+      ierr = PetscViewerASCIIPrintf(viewer, "\n% -----------------------------\n");CHKERRQ(ierr);
+      ierr = PetscViewerASCIIPrintf(viewer, "%  Matrix Jacobian: \n% -------------------------\n");CHKERRQ(ierr);
+      ierr = MatView(jac, viewer);CHKERRQ(ierr);
+      ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+    #endif
   }else if(user->fd_jacobian_color){ /* compute the Jacobian using FD coloring */
     /* using the FD coloring to find the jacobian of the stabilizd term
        and form the analytic jacobian of the linear and nonlinear term */
     ierr = SNESComputeJacobianDefaultColor(snes, g, jac, jac, 0);CHKERRQ(ierr);
+    #if 0
+      PetscViewer viewer;
+      char filename[256];
+      sprintf(filename,"matJac.m");
+      ierr = PetscViewerASCIIOpen(PETSC_COMM_WORLD,filename,
+                              &viewer);CHKERRQ(ierr);
+      ierr = PetscViewerSetFormat(viewer, PETSC_VIEWER_DEFAULT);CHKERRQ(ierr);
+      ierr = PetscViewerSetFormat(viewer, PETSC_VIEWER_ASCII_MATLAB);CHKERRQ(ierr);
+      ierr = PetscViewerASCIIPrintf(viewer, "\n% -----------------------------\n");CHKERRQ(ierr);
+      ierr = PetscViewerASCIIPrintf(viewer, "%  Matrix Jacobian: \n% -------------------------\n");CHKERRQ(ierr);
+      ierr = MatView(jac, viewer);CHKERRQ(ierr);
+      ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+    #endif
   }else {
     /* form the analytic Jacobian for all the terms */
     ierr = SetupJacobian(user->dm, g, jac, B, user);CHKERRQ(ierr);
+    #if 0
+      PetscViewer viewer;
+      char filename[256];
+      sprintf(filename,"matJac.m");
+      ierr = PetscViewerASCIIOpen(PETSC_COMM_WORLD,filename,
+                              &viewer);CHKERRQ(ierr);
+      ierr = PetscViewerSetFormat(viewer, PETSC_VIEWER_DEFAULT);CHKERRQ(ierr);
+      ierr = PetscViewerSetFormat(viewer, PETSC_VIEWER_ASCII_MATLAB);CHKERRQ(ierr);
+      ierr = PetscViewerASCIIPrintf(viewer, "\n% -----------------------------\n");CHKERRQ(ierr);
+      ierr = PetscViewerASCIIPrintf(viewer, "%  Matrix Jacobian: \n% -------------------------\n");CHKERRQ(ierr);
+      ierr = MatView(jac, viewer);CHKERRQ(ierr);
+      ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+    #endif
   }
 
   PetscFunctionReturn(0);
@@ -79,12 +117,12 @@ PetscErrorCode SetupJacobian(DM dm, Vec X, Mat jac, Mat B, void *ctx)
   {
     PetscInt         NumOfIndices;
     PetscInt         indices[dof];
-    PetscScalar      *values;
+    PetscReal      *values;
 
     for (c = cStart; c < cEnd; ++c) {
       ierr = DMPlexGetIndex(dm, section, globalSection, c, &NumOfIndices, indices);CHKERRQ(ierr);
       ierr = PetscMalloc1(NumOfIndices*NumOfIndices, &values);CHKERRQ(ierr);
-      ierr = PetscMemzero(values, NumOfIndices*NumOfIndices* sizeof(PetscScalar));CHKERRQ(ierr);
+      ierr = PetscMemzero(values, NumOfIndices*NumOfIndices* sizeof(PetscReal));CHKERRQ(ierr);
 
       if (user->second_order){
         ierr = ComputeJacobian_LS(dm, inLocal, c, values, user);CHKERRQ(ierr);
@@ -104,31 +142,19 @@ PetscErrorCode SetupJacobian(DM dm, Vec X, Mat jac, Mat B, void *ctx)
 
   ierr = MatAssemblyBegin(jac, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
   ierr = MatAssemblyEnd(jac, MAT_FINAL_ASSEMBLY);CHKERRQ(ierr);
-  {
-    PetscViewer viewer;
-    char filename[256];
-    sprintf(filename,"matJac.m");
-    ierr = PetscViewerASCIIOpen(PETSC_COMM_WORLD,filename,
-                              &viewer);CHKERRQ(ierr);
-    ierr = PetscViewerSetFormat(viewer, PETSC_VIEWER_DEFAULT);CHKERRQ(ierr);
-    ierr = PetscViewerSetFormat(viewer, PETSC_VIEWER_ASCII_MATLAB);CHKERRQ(ierr);
-    ierr = PetscViewerASCIIPrintf(viewer, "\n% -----------------------------\n");CHKERRQ(ierr);
-    ierr = PetscViewerASCIIPrintf(viewer, "%  Matrix Jacobian: \n% -------------------------\n");CHKERRQ(ierr);
-    ierr = MatView(jac, viewer);CHKERRQ(ierr);
-    ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
-  }
+
   PetscFunctionReturn(0);
 }
 
 
 #undef __FUNCT__
 #define __FUNCT__ "ComputeJacobian_Upwind"
-PetscErrorCode ComputeJacobian_Upwind(DM dm, Vec locX, PetscInt cell, PetscScalar CellValues[], void *ctx)
+PetscErrorCode ComputeJacobian_Upwind(DM dm, Vec locX, PetscInt cell, PetscReal CellValues[], void *ctx)
 {
   User              user = (User) ctx;
   Physics           phys = user->model->physics;
   PetscInt          dof = phys->dof;
-  const PetscScalar *facegeom, *cellgeom,*x;
+  const PetscReal *facegeom, *cellgeom,*x;
   PetscErrorCode    ierr;
   DM                dmFace, dmCell;
 
@@ -156,7 +182,7 @@ PetscErrorCode ComputeJacobian_Upwind(DM dm, Vec locX, PetscInt cell, PetscScala
   ierr = DMPlexGetHeightStratum(dm, 1, &fStart, &fEnd);CHKERRQ(ierr);
   ierr = DMPlexGetHeightStratum(dm, 0, &cStart, NULL);CHKERRQ(ierr);
   {
-    PetscScalar *grad;
+    PetscReal *grad;
     ierr = VecGetArray(Grad,&grad);CHKERRQ(ierr);
 
     /* Limit interior gradients. Using cell-based loop because it generalizes better to vector limiters. */
@@ -164,12 +190,12 @@ PetscErrorCode ComputeJacobian_Upwind(DM dm, Vec locX, PetscInt cell, PetscScala
       const PetscInt    *faces;
       PetscInt          numFaces,f;
       PetscReal         *cellPhi; /* Scalar limiter applied to each component separately */
-      const PetscScalar *cx;
+      const PetscReal *cx;
       const CellGeom    *cg;
-      PetscScalar       *cgrad;
+      PetscReal       *cgrad;
       PetscInt          i;
 
-      ierr = PetscMalloc(phys->dof*sizeof(PetscScalar),&cellPhi);CHKERRQ(ierr);
+      ierr = PetscMalloc(phys->dof*sizeof(PetscReal),&cellPhi);CHKERRQ(ierr);
 
       ierr = DMPlexGetConeSize(dm,cell,&numFaces);CHKERRQ(ierr);
       ierr = DMPlexGetCone(dm,cell,&faces);CHKERRQ(ierr);
@@ -182,11 +208,11 @@ PetscErrorCode ComputeJacobian_Upwind(DM dm, Vec locX, PetscInt cell, PetscScala
         cellPhi[i] = PETSC_MAX_REAL;
       }
       for (f=0; f<numFaces; f++) {
-        const PetscScalar *ncx;
+        const PetscReal *ncx;
         const CellGeom    *ncg;
         const PetscInt    *fcells;
         PetscInt          face = faces[f],ncell;
-        PetscScalar       v[DIM];
+        PetscReal       v[DIM];
         PetscBool         ghost;
         ierr = IsExteriorGhostFace(dm,face,&ghost);CHKERRQ(ierr);
         if (ghost) continue;
@@ -197,7 +223,7 @@ PetscErrorCode ComputeJacobian_Upwind(DM dm, Vec locX, PetscInt cell, PetscScala
         Waxpy2(-1, cg->centroid, ncg->centroid, v);
         for (i=0; i<dof; i++) {
           /* We use the symmetric slope limited form of Berger, Aftosmis, and Murman 2005 */
-          PetscScalar phi,flim = 0.5 * (ncx[i] - cx[i]) / Dot2(&cgrad[i*DIM],v);
+          PetscReal phi,flim = 0.5 * (ncx[i] - cx[i]) / Dot2(&cgrad[i*DIM],v);
           phi        = (*user->LimitGrad)(flim);
           cellPhi[i] = PetscMin(cellPhi[i],phi);
         }
@@ -223,23 +249,23 @@ PetscErrorCode ComputeJacobian_Upwind(DM dm, Vec locX, PetscInt cell, PetscScala
   ierr = VecDestroy(&TempVec);CHKERRQ(ierr);
 
   {
-    const PetscScalar *grad, *gradlimiter;
+    const PetscReal *grad, *gradlimiter;
     ierr = VecGetArrayRead(locGrad,&grad);CHKERRQ(ierr);
     ierr = VecGetArrayRead(locGradLimiter,&gradlimiter);CHKERRQ(ierr);
     for (face=fStart; face<fEnd; face++) {
       const PetscInt    *cells;
       PetscInt          ghost,i,j;
-      PetscScalar       *fluxcon, *fluxdiff, *fx[2];
+      PetscReal       *fluxcon, *fluxdiff, *fx[2];
       const FaceGeom    *fg;
       const CellGeom    *cg[2];
-      const PetscScalar *cx[2],*cgrad[2], *cgradlimiter[2];
-      PetscScalar       *uL, *uR;
+      const PetscReal *cx[2],*cgrad[2], *cgradlimiter[2];
+      PetscReal       *uL, *uR;
       PetscReal         FaceArea;
 
-      ierr = PetscMalloc(phys->dof * phys->dof * sizeof(PetscScalar), &fluxcon);CHKERRQ(ierr); /*For the convection terms*/
-      ierr = PetscMalloc(phys->dof * phys->dof * sizeof(PetscScalar), &fluxdiff);CHKERRQ(ierr); /*For the diffusion terms*/
-      ierr = PetscMalloc(phys->dof * sizeof(PetscScalar), &uL);CHKERRQ(ierr);
-      ierr = PetscMalloc(phys->dof * sizeof(PetscScalar), &uR);CHKERRQ(ierr);
+      ierr = PetscMalloc(phys->dof * phys->dof * sizeof(PetscReal), &fluxcon);CHKERRQ(ierr); /*For the convection terms*/
+      ierr = PetscMalloc(phys->dof * phys->dof * sizeof(PetscReal), &fluxdiff);CHKERRQ(ierr); /*For the diffusion terms*/
+      ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &uL);CHKERRQ(ierr);
+      ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &uR);CHKERRQ(ierr);
 
       fx[0] = uL; fx[1] = uR;
 
@@ -248,7 +274,7 @@ PetscErrorCode ComputeJacobian_Upwind(DM dm, Vec locX, PetscInt cell, PetscScala
       ierr = DMPlexGetSupport(dm, face, &cells);CHKERRQ(ierr);
       ierr = DMPlexPointLocalRead(dmFace,face,facegeom,&fg);CHKERRQ(ierr);
       for (i=0; i<2; i++) {
-        PetscScalar dx[DIM];
+        PetscReal dx[DIM];
         ierr = DMPlexPointLocalRead(dmCell,cells[i],cellgeom,&cg[i]);CHKERRQ(ierr);
         ierr = DMPlexPointLocalRead(dm,cells[i],x,&cx[i]);CHKERRQ(ierr);
         ierr = DMPlexPointLocalRead(dmGrad,cells[i],gradlimiter,&cgradlimiter[i]);CHKERRQ(ierr);
@@ -293,12 +319,12 @@ PetscErrorCode ComputeJacobian_Upwind(DM dm, Vec locX, PetscInt cell, PetscScala
 
 #undef __FUNCT__
 #define __FUNCT__ "ComputeJacobian_LS"
-PetscErrorCode ComputeJacobian_LS(DM dm, Vec locX, PetscInt cell, PetscScalar CellValues[], void *ctx)
+PetscErrorCode ComputeJacobian_LS(DM dm, Vec locX, PetscInt cell, PetscReal CellValues[], void *ctx)
 {
   User              user = (User) ctx;
   Physics           phys = user->model->physics;
   PetscInt          dof = phys->dof;
-  const PetscScalar *facegeom, *cellgeom,*x;
+  const PetscReal *facegeom, *cellgeom,*x;
   PetscErrorCode    ierr;
   DM                dmFace, dmCell;
 
@@ -326,7 +352,7 @@ PetscErrorCode ComputeJacobian_LS(DM dm, Vec locX, PetscInt cell, PetscScalar Ce
   ierr = DMPlexGetHeightStratum(dm, 1, &fStart, &fEnd);CHKERRQ(ierr);
   ierr = DMPlexGetHeightStratum(dm, 0, &cStart, NULL);CHKERRQ(ierr);
   {
-    PetscScalar *grad;
+    PetscReal *grad;
     ierr = VecGetArray(Grad,&grad);CHKERRQ(ierr);
 
     /* Limit interior gradients. Using cell-based loop because it generalizes better to vector limiters. */
@@ -334,12 +360,12 @@ PetscErrorCode ComputeJacobian_LS(DM dm, Vec locX, PetscInt cell, PetscScalar Ce
       const PetscInt    *faces;
       PetscInt          numFaces,f;
       PetscReal         *cellPhi; /* Scalar limiter applied to each component separately */
-      const PetscScalar *cx;
+      const PetscReal *cx;
       const CellGeom    *cg;
-      PetscScalar       *cgrad;
+      PetscReal       *cgrad;
       PetscInt          i;
 
-      ierr = PetscMalloc(phys->dof*sizeof(PetscScalar),&cellPhi);CHKERRQ(ierr);
+      ierr = PetscMalloc(phys->dof*sizeof(PetscReal),&cellPhi);CHKERRQ(ierr);
 
       ierr = DMPlexGetConeSize(dm,cell,&numFaces);CHKERRQ(ierr);
       ierr = DMPlexGetCone(dm,cell,&faces);CHKERRQ(ierr);
@@ -352,11 +378,11 @@ PetscErrorCode ComputeJacobian_LS(DM dm, Vec locX, PetscInt cell, PetscScalar Ce
         cellPhi[i] = PETSC_MAX_REAL;
       }
       for (f=0; f<numFaces; f++) {
-        const PetscScalar *ncx;
+        const PetscReal *ncx;
         const CellGeom    *ncg;
         const PetscInt    *fcells;
         PetscInt          face = faces[f],ncell;
-        PetscScalar       v[DIM];
+        PetscReal       v[DIM];
         PetscBool         ghost;
         ierr = IsExteriorGhostFace(dm,face,&ghost);CHKERRQ(ierr);
         if (ghost) continue;
@@ -367,7 +393,7 @@ PetscErrorCode ComputeJacobian_LS(DM dm, Vec locX, PetscInt cell, PetscScalar Ce
         Waxpy2(-1, cg->centroid, ncg->centroid, v);
         for (i=0; i<dof; i++) {
           /* We use the symmetric slope limited form of Berger, Aftosmis, and Murman 2005 */
-          PetscScalar phi,flim = 0.5 * (ncx[i] - cx[i]) / Dot2(&cgrad[i*DIM],v);
+          PetscReal phi,flim = 0.5 * (ncx[i] - cx[i]) / Dot2(&cgrad[i*DIM],v);
           phi        = (*user->LimitGrad)(flim);
           cellPhi[i] = PetscMin(cellPhi[i],phi);
         }
@@ -393,23 +419,23 @@ PetscErrorCode ComputeJacobian_LS(DM dm, Vec locX, PetscInt cell, PetscScalar Ce
   ierr = VecDestroy(&TempVec);CHKERRQ(ierr);
 
   {
-    const PetscScalar *grad, *gradlimiter;
+    const PetscReal *grad, *gradlimiter;
     ierr = VecGetArrayRead(locGrad,&grad);CHKERRQ(ierr);
     ierr = VecGetArrayRead(locGradLimiter,&gradlimiter);CHKERRQ(ierr);
     for (face=fStart; face<fEnd; face++) {
       const PetscInt    *cells;
       PetscInt          ghost,i,j;
-      PetscScalar       *fluxcon, *fluxdiff, *fx[2];
+      PetscReal       *fluxcon, *fluxdiff, *fx[2];
       const FaceGeom    *fg;
       const CellGeom    *cg[2];
-      const PetscScalar *cx[2],*cgrad[2], *cgradlimiter[2];
-      PetscScalar       *uL, *uR;
+      const PetscReal *cx[2],*cgrad[2], *cgradlimiter[2];
+      PetscReal       *uL, *uR;
       PetscReal         FaceArea;
 
-      ierr = PetscMalloc(phys->dof * phys->dof * sizeof(PetscScalar), &fluxcon);CHKERRQ(ierr); /*For the convection terms*/
-      ierr = PetscMalloc(phys->dof * phys->dof * sizeof(PetscScalar), &fluxdiff);CHKERRQ(ierr); /*For the diffusion terms*/
-      ierr = PetscMalloc(phys->dof * sizeof(PetscScalar), &uL);CHKERRQ(ierr);
-      ierr = PetscMalloc(phys->dof * sizeof(PetscScalar), &uR);CHKERRQ(ierr);
+      ierr = PetscMalloc(phys->dof * phys->dof * sizeof(PetscReal), &fluxcon);CHKERRQ(ierr); /*For the convection terms*/
+      ierr = PetscMalloc(phys->dof * phys->dof * sizeof(PetscReal), &fluxdiff);CHKERRQ(ierr); /*For the diffusion terms*/
+      ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &uL);CHKERRQ(ierr);
+      ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &uR);CHKERRQ(ierr);
 
       fx[0] = uL; fx[1] = uR;
 
@@ -418,7 +444,7 @@ PetscErrorCode ComputeJacobian_LS(DM dm, Vec locX, PetscInt cell, PetscScalar Ce
       ierr = DMPlexGetSupport(dm, face, &cells);CHKERRQ(ierr);
       ierr = DMPlexPointLocalRead(dmFace,face,facegeom,&fg);CHKERRQ(ierr);
       for (i=0; i<2; i++) {
-        PetscScalar dx[DIM];
+        PetscReal dx[DIM];
         ierr = DMPlexPointLocalRead(dmCell,cells[i],cellgeom,&cg[i]);CHKERRQ(ierr);
         ierr = DMPlexPointLocalRead(dm,cells[i],x,&cx[i]);CHKERRQ(ierr);
         ierr = DMPlexPointLocalRead(dmGrad,cells[i],gradlimiter,&cgradlimiter[i]);CHKERRQ(ierr);
@@ -471,13 +497,13 @@ This function is for the Rusanov type Riemann solver.
 speed = \max\{|\mathbf{u}_L| + c_L,  |\mathbf{u}_R| + c_R \},
 where $c$ is the speed of the sound and $\mathbf{u}$ is the velocity.
 */
-PetscErrorCode RiemannSolver_Rusanov_Jacobian(User user, const PetscScalar *cgradL, const PetscScalar *cgradR,
+PetscErrorCode RiemannSolver_Rusanov_Jacobian(User user, const PetscReal *cgradL, const PetscReal *cgradR,
                                              const PetscReal *fgc, const PetscReal *cgcL, const
-                                             PetscReal *cgcR, const PetscReal *n, const PetscScalar *xL, const PetscScalar *xR,
-                                             PetscScalar *fluxcon, PetscScalar *fluxdiff)
+                                             PetscReal *cgcR, const PetscReal *n, const PetscReal *xL, const PetscReal *xR,
+                                             PetscReal *fluxcon, PetscReal *fluxdiff)
 {
   PetscErrorCode  ierr;
-  PetscScalar     cL,cR,speed;
+  PetscReal     cL,cR,speed;
   const Node      *uL = (const Node*)xL,*uR = (const Node*)xR;
   Node            fLcon,fRcon;
   Node            fLdiff,fRdiff;
@@ -522,12 +548,12 @@ PetscErrorCode RiemannSolver_Rusanov_Jacobian(User user, const PetscScalar *cgra
 /**
 Compute the gadient of the cell center gradient obtained by the least-square method
 */
-PetscErrorCode GradientGradientJacobian(DM dm, Vec locX, PetscScalar elemMat[], void *ctx)
+PetscErrorCode GradientGradientJacobian(DM dm, Vec locX, PetscReal elemMat[], void *ctx)
 {
   User              user = (User) ctx;
   Physics           phys = user->model->physics;
   PetscInt          dof = phys->dof;
-  const PetscScalar *facegeom, *cellgeom,*x;
+  const PetscReal *facegeom, *cellgeom,*x;
   PetscErrorCode    ierr;
   DM                dmFace, dmCell;
 
@@ -554,14 +580,14 @@ PetscErrorCode GradientGradientJacobian(DM dm, Vec locX, PetscScalar elemMat[], 
   ierr = DMPlexGetHeightStratum(dm, 1, &fStart, &fEnd);CHKERRQ(ierr);
   ierr = DMPlexGetHeightStratum(dm, 0, &cStart, NULL);CHKERRQ(ierr);
   {
-    PetscScalar *grad;
+    PetscReal *grad;
     ierr = VecGetArray(TempVec,&grad);CHKERRQ(ierr);
     /* Reconstruct gradients */
     for (face=fStart; face<fEnd; face++) {
       const PetscInt    *cells;
-      const PetscScalar *cx[2];
+      const PetscReal *cx[2];
       const FaceGeom    *fg;
-      PetscScalar       *cgrad[2];
+      PetscReal       *cgrad[2];
       PetscInt          i,j;
       PetscBool         ghost;
 
@@ -574,7 +600,7 @@ PetscErrorCode GradientGradientJacobian(DM dm, Vec locX, PetscScalar elemMat[], 
         ierr = DMPlexPointGlobalRef(dmGrad,cells[i],grad,&cgrad[i]);CHKERRQ(ierr);
       }
       for (i=0; i<dof; i++) {
-        PetscScalar delta = cx[1][i] - cx[0][i];
+        PetscReal delta = cx[1][i] - cx[0][i];
         for (j=0; j<DIM; j++) {
           if (cgrad[0]) cgrad[0][i*DIM+j] += fg->grad[0][j] * delta;
           if (cgrad[1]) cgrad[1][i*DIM+j] -= fg->grad[1][j] * delta;
@@ -606,8 +632,8 @@ PetscErrorCode ApplyBC(DM dm, PetscReal time, Vec locX, User user)
   DM                dmFace;
   IS                idIS;
   const PetscInt    *ids;
-  PetscScalar       *x;
-  const PetscScalar *facegeom;
+  PetscReal       *x;
+  const PetscReal *facegeom;
   PetscInt          numFS, fs;
   PetscErrorCode    ierr;
   PetscMPIInt       rank;
@@ -636,8 +662,8 @@ PetscErrorCode ApplyBC(DM dm, PetscReal time, Vec locX, User user)
     for (f = 0; f < numFaces; ++f) {
 //      PetscPrintf(PETSC_COMM_SELF, "rank[%d]: ids[%d] = %d, faceIS[%d] = %d, numFaces = %d\n", rank, fs, ids[fs], f, faces[f], numFaces);
       const PetscInt    face = faces[f], *cells;
-      const PetscScalar *xI; /*Inner point*/
-      PetscScalar       *xG; /*Ghost point*/
+      const PetscReal *xI; /*Inner point*/
+      PetscReal       *xG; /*Ghost point*/
       const FaceGeom    *fg;
 
       ierr = DMPlexPointLocalRead(dmFace, face, facegeom, &fg);CHKERRQ(ierr);
@@ -648,7 +674,7 @@ PetscErrorCode ApplyBC(DM dm, PetscReal time, Vec locX, User user)
         //PetscPrintf(PETSC_COMM_SELF, "Set Inlfow Boundary Condition! \n");
         ierr = BoundaryInflow(time, fg->centroid, fg->normal, xI, xG, user);CHKERRQ(ierr);
 //        DM                dmCell;
-//        const PetscScalar *cellgeom;
+//        const PetscReal *cellgeom;
 //        const CellGeom    *cgL, *cgR;
 //        ierr = VecGetDM(user->cellgeom,&dmCell);CHKERRQ(ierr);
 //        ierr = VecGetArrayRead(user->cellgeom, &cellgeom);CHKERRQ(ierr);
@@ -677,68 +703,13 @@ PetscErrorCode ApplyBC(DM dm, PetscReal time, Vec locX, User user)
   PetscFunctionReturn(0);
 }
 
-//
-//#undef __FUNCT__
-//#define __FUNCT__ "ComputeExactSolution"
-//PetscErrorCode ComputeExactSolution(DM dm, Vec locX, User user)
-//{
-//  PetscErrorCode    ierr;
-//  const PetscScalar *facegeom, *cellgeom, *x;
-//  PetscScalar       *f;
-//  PetscInt          fStart, fEnd, face;
-//  Physics           phys = user->model->physics;
-//  DM                dmFace, dmCell;
-//
-//
-//  PetscFunctionBeginUser;
-//
-//  ierr = VecGetDM(user->facegeom,&dmFace);CHKERRQ(ierr);
-//  ierr = VecGetDM(user->cellgeom,&dmCell);CHKERRQ(ierr);
-//
-//  ierr = VecGetArrayRead(user->facegeom,&facegeom);CHKERRQ(ierr);
-//  ierr = VecGetArrayRead(user->cellgeom,&cellgeom);CHKERRQ(ierr);
-//  ierr = VecGetArrayRead(locX,&x);CHKERRQ(ierr);
-//
-//  ierr = DMPlexGetHeightStratum(dm, 1, &fStart, &fEnd);CHKERRQ(ierr);
-//
-//  {
-//    const PetscInt    *cells;
-//    PetscInt          i,ghost;
-//    PetscScalar       *fL,*fR;
-//    const FaceGeom    *fg;
-//    const CellGeom    *cgL,*cgR;
-//
-//    for (face = fStart; face < fEnd; ++face) {
-//      ierr = DMPlexGetLabelValue(dm, "ghost", face, &ghost);CHKERRQ(ierr);
-//      if (ghost >= 0) continue;
-//      ierr = DMPlexGetSupport(dm, face, &cells);CHKERRQ(ierr);/*The support of a face is the cells (two cells)*/
-//      ierr = DMPlexPointLocalRead(dmFace,face,facegeom,&fg);CHKERRQ(ierr);/*Read the data from "facegeom" for the point "face"*/
-//      ierr = DMPlexPointLocalRead(dmCell,cells[0],cellgeom,&cgL);CHKERRQ(ierr);
-//      ierr = DMPlexPointLocalRead(dmCell,cells[1],cellgeom,&cgR);CHKERRQ(ierr);
-//
-//      ierr = DMPlexPointGlobalRef(dm,cells[0],x,&fL);CHKERRQ(ierr); /*For the functions*/
-//      ierr = DMPlexPointGlobalRef(dm,cells[1],x,&fR);CHKERRQ(ierr);
-//
-//      if (fL) ierr = ExactSolution(0.0, cgL->centroid, fg->normal, fL, fL, user);CHKERRQ(ierr);
-//      if (fR) ierr = ExactSolution(0.0, cgR->centroid, fg->normal, fR, fR, user);CHKERRQ(ierr);
-//
-//    }
-//  }
-//
-//  ierr = VecRestoreArrayRead(user->facegeom,&facegeom);CHKERRQ(ierr);
-//  ierr = VecRestoreArrayRead(user->cellgeom,&cellgeom);CHKERRQ(ierr);
-//  ierr = VecRestoreArrayRead(locX,&x);CHKERRQ(ierr);
-//
-//  PetscFunctionReturn(0);
-//}
-
 #undef __FUNCT__
 #define __FUNCT__ "ComputeExactSolution"
 PetscErrorCode ComputeExactSolution(DM dm, PetscReal time, Vec X, User user)
 {
   DM                dmCell;
-  const PetscScalar *cellgeom;
-  PetscScalar       *x;
+  const PetscReal *cellgeom;
+  PetscReal       *x;
   PetscInt          cStart, cEnd, cEndInterior = user->cEndInterior, c;
   PetscErrorCode    ierr;
 
@@ -749,7 +720,7 @@ PetscErrorCode ComputeExactSolution(DM dm, PetscReal time, Vec X, User user)
   ierr = VecGetArray(X, &x);CHKERRQ(ierr);
   for (c = cStart; c < cEndInterior; ++c) {
     const CellGeom *cg;
-    PetscScalar    *xc;
+    PetscReal    *xc;
 
     ierr = DMPlexPointLocalRead(dmCell,c,cellgeom,&cg);CHKERRQ(ierr);
     ierr = DMPlexPointGlobalRef(dm,c,x,&xc);CHKERRQ(ierr);
