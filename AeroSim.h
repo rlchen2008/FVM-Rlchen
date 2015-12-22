@@ -107,6 +107,8 @@ struct _n_User {
   PetscInt       steps_output; /* the number of time steps between two outputs */
   char           RiemannSolver[PETSC_MAX_PATH_LEN];
   PetscReal      CFL; // The Courant number coefficient
+  PetscBool      orthogonal_correct; // The orthogonal correction
+  PetscBool      simple_diffusion; // Using a simple diffusion version
   struct {
     PetscReal *flux;
     PetscReal *state0;

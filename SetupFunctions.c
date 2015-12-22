@@ -1049,71 +1049,209 @@ PetscErrorCode DiffusionFlux(User user, const PetscReal *cgradL, const PetscReal
   PetscInt     i, j;
   PetscReal    graduL[DIM][DIM], graduR[DIM][DIM]; // Gradient on the cell center
   PetscReal    gradEL[DIM], gradER[DIM]; // Gradient on the cell center
+  PetscReal    gradTf[DIM]; // Gradient of the temperature on the face center
   PetscReal    cgcAL[DIM], cgcAR[DIM];
   PetscReal    Dfl, Dfr, tempL[DIM], tempR[DIM];
   PetscReal    D[DIM], DiffL[DIM], DiffR[DIM];
   PetscReal    gradU, gradV, gradW, gradT; // Gradient on the Face center
   PetscReal    uL, vL, wL, EL;
   PetscReal    uR, vR, wR, ER;
+  PetscReal    uf, vf, wf, Ef;
 
   PetscFunctionBeginUser;
 
-  for (i=0; i<DIM; i++) {
-    for (j=0; j<DIM; j++) {
-      graduL[i][j] = cgradL[(i+1)*DIM + j];
-      graduR[i][j] = cgradR[(i+1)*DIM + j];
-    }/*gradient of the velocity*/
-  }
+  if (!user->orthogonal_correct){
+#if 1
+// The gradient on the face is caculated by averaging the two cell centoid gradients
+    PetscReal     delta = 0.5;
+    PetscReal    graduf[DIM][DIM]; // Gradient on the face center
+    PetscReal    gradEf[DIM];      // Gradient on the face center
 
-  for (i=0; i<DIM; i++) {
-    gradEL[i] = cgradL[4*DIM + i];
-    gradER[i] = cgradR[4*DIM + i];
+    for (i=0; i<DIM; i++) {
+      for (j=0; j<DIM; j++) {
+        graduf[i][j] = delta*graduL[i][j] + (1.0 - delta)*graduR[i][j];
+      }/*gradient of the velocity on the face*/
+    }
 
-    tempL[i] = fgc[i] - cgcL[i];
-    tempR[i] = fgc[i] - cgcR[i];
-  }/*gradient of the energy*/
+    for (i=0; i<DIM; i++) {
+       gradEf[i] = delta*gradEL[i] + (1.0 - delta)*gradER[i];
+    }/*gradient of the energy on the face*/
 
-  Dfl = DotDIM(tempL, n);
-  Dfr = DotDIM(tempR, n);
+    if (user->TimeIntegralMethod == EXPLICITMETHOD){
+      uL = xL->ru[0]/xL->r;  uR = xR->ru[0]/xR->r;
+      vL = xL->ru[1]/xL->r;  vR = xR->ru[1]/xR->r;
+      wL = xL->ru[2]/xL->r;  wR = xR->ru[2]/xR->r;
+      EL = xL->rE/xL->r;     ER = xR->rE/xR->r;
+    }else{
+      uL = xL->ru[0];  uR = xR->ru[0];
+      vL = xL->ru[1];  vR = xR->ru[1];
+      wL = xL->ru[2];  wR = xR->ru[2];
+      EL = xL->rE;     ER = xR->rE;
+    }
+
+    uf = (uL+uR)/2.0; // value on the face
+    vf = (vL+vR)/2.0;
+    wf = (wL+wR)/2.0;
+    Ef = (EL+ER)/2.0;
+
+    PetscReal constant;
+    constant = (user->adiabatic - 1)/user->R;
+    for (i=0; i<DIM; i++) {
+       gradTf[i] = constant*(gradEf[i] - (uf*graduf[0][i] + vf*graduf[1][i] + wf*graduf[2][i]));
+    }/*gradient of the temperature on the face*/
+
+    if (user->simple_diffusion){
+      // Using the Laplace for the diffusion terms
+      gradU = DotDIM(graduf[0], n); // Gradient u on the Face center
+      gradV = DotDIM(graduf[1], n); // Gradient v on the Face center
+      gradW = DotDIM(graduf[2], n); // Gradient w on the Face center
+      gradT = DotDIM(gradTf, n);    // Gradient E on the Face center
+
+      f->r = 0; /*Since the continuity equation does not have diffusion term*/
+
+      {
+        f->ru[0] = user->viscosity*gradU;
+        f->ru[1] = user->viscosity*gradV;
+        f->ru[2] = user->viscosity*gradW;
+      }/*for the momentum equations*/
+
+      f->rE = user->k*gradT; /*for the energy equation*/
+
+    }else{
+     // Using the full version of the diffusion terms
+      PetscReal    Fdf[5], Fdg[5], Fdh[5];
+      PetscReal    tauxx, tauxy, tauxz, tauyx, tauyy, tauyz, tauzx, tauzy, tauzz;
+      PetscReal    mu = user->viscosity;
+      PetscReal    diag;
+
+      diag = 2.0/3.0*mu*(graduf[0][0]+graduf[1][1]+graduf[2][2]);
+
+      tauxx = 2*mu* graduf[0][0] - diag;
+      tauxy =   mu*(graduf[0][1]+graduf[1][0]);
+      tauxz =   mu*(graduf[0][2]+graduf[2][0]);
+
+      tauyx =   tauxy;
+      tauyy = 2*mu* graduf[1][1] - diag;
+      tauyz =   mu*(graduf[1][2]+graduf[2][1]);
+
+      tauzx =   tauxz;
+      tauzy =   tauyz;
+      tauzz = 2*mu* graduf[2][2] - diag;
+
+      Fdf[0] = 0.0;  Fdf[1] = tauxx; Fdf[2] = tauxy; Fdf[3] = tauxz;
+      Fdf[4] = tauxx*uf + tauxy*vf + tauxz*wf + user->k*gradTf[0];
+
+      Fdg[0] = 0.0;  Fdg[1] = tauyx; Fdg[2] = tauyy; Fdg[3] = tauyz;
+      Fdg[4] = tauyx*uf + tauyy*vf + tauyz*wf + user->k*gradTf[1];
+
+      Fdh[0] = 0.0;  Fdh[1] = tauzx; Fdh[2] = tauzy; Fdh[3] = tauzz;
+      Fdh[4] = tauzx*uf + tauzy*vf + tauzz*wf + user->k*gradTf[2];
+
+      f->r     = (n[0]*Fdf[0] + n[1]*Fdg[0] + n[2]*Fdh[0]); /* for the continuty equation   */
+      f->ru[0] = (n[0]*Fdf[1] + n[1]*Fdg[1] + n[2]*Fdh[1]); /* for the momentum equations x */
+      f->ru[1] = (n[0]*Fdf[2] + n[1]*Fdg[2] + n[2]*Fdh[2]); /* for the momentum equations y */
+      f->ru[2] = (n[0]*Fdf[3] + n[1]*Fdg[3] + n[2]*Fdh[3]); /* for the momentum equations z */
+      f->rE    = (n[0]*Fdf[4] + n[1]*Fdg[4] + n[2]*Fdh[4]); /* for the energy equation      */
+    }
+
+#endif
+
+#if 0
+// The gradient on the face is caculated using the finite difference method with the two cell centoid values
+    for (i=0; i<DIM; i++) {
+      cgcAL[i] = fgc[i] - Dfl*n[i];
+      cgcAR[i] = fgc[i] - Dfr*n[i];
+      D[i]     = cgcAL[i] - cgcAR[i];
+    }
+    if (NormDIM(D) < 1.e-8) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_OUTOFRANGE,"The distance of two elements is zero, check the mesh!");
+
+    if (user->TimeIntegralMethod == EXPLICITMETHOD){
+      uL = xL->ru[0]/xL->r;  uR = xR->ru[0]/xR->r;
+      vL = xL->ru[1]/xL->r;  vR = xR->ru[1]/xR->r;
+      wL = xL->ru[2]/xL->r;  wR = xR->ru[2]/xR->r;
+      EL = xL->rE/xL->r;     ER = xR->rE/xR->r;
+    }else{
+      uL = xL->ru[0];  uR = xR->ru[0];
+      vL = xL->ru[1];  vR = xR->ru[1];
+      wL = xL->ru[2];  wR = xR->ru[2];
+      EL = xL->rE;     ER = xR->rE;
+    }
+    gradU = (uL - uR)/NormDIM(D); // Gradient u on the Face center
+    gradV = (vL - vR)/NormDIM(D); // Gradient v on the Face center
+    gradW = (wL - wR)/NormDIM(D); // Gradient w on the Face center
+    gradT = (EL - ER)/NormDIM(D); // Gradient E on the Face center
+
+    f->r = 0; /*Since the continuity equation does not have diffusion term*/
+
+    {
+      f->ru[0] = user->viscosity*gradU;
+      f->ru[1] = user->viscosity*gradV;
+      f->ru[2] = user->viscosity*gradW;
+    }/*for the momentum equations*/
+
+    f->rE = user->k*gradT; /*for the energy equation*/
+
+#endif
+
+  }else{//do the orthogonal correction following reference: Ferziger and Peric(2002)
+    for (i=0; i<DIM; i++) {
+      for (j=0; j<DIM; j++) {
+        graduL[i][j] = cgradL[(i+1)*DIM + j];
+        graduR[i][j] = cgradR[(i+1)*DIM + j];
+      }/*gradient of the velocity*/
+    }
+
+    for (i=0; i<DIM; i++) {
+      gradEL[i] = cgradL[4*DIM + i];
+      gradER[i] = cgradR[4*DIM + i];
+
+      tempL[i] = fgc[i] - cgcL[i];
+      tempR[i] = fgc[i] - cgcR[i];
+    }/*gradient of the energy*/
+
+    Dfl = DotDIM(tempL, n);
+    Dfr = DotDIM(tempR, n);
 
 //  PetscPrintf(PETSC_COMM_WORLD, "Dfl = %f, Dfr = %f\n", Dfl, Dfr);
 
-  for (i=0; i<DIM; i++) {
-    cgcAL[i] = fgc[i] - Dfl*n[i];
-    cgcAR[i] = fgc[i] - Dfr*n[i];
-    D[i]     = cgcAL[i] - cgcAR[i];
-    DiffL[i] = cgcAL[i] - cgcL[i];
-    DiffR[i] = cgcAR[i] - cgcR[i];
-  }/*The auxiliary nodes (See [Ferziger and Peric (2002)])*/
-  if (NormDIM(D) < 1.e-8) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_OUTOFRANGE,"The distance of two elements is zero, check the mesh!");
+    for (i=0; i<DIM; i++) {
+      cgcAL[i] = fgc[i] - Dfl*n[i];
+      cgcAR[i] = fgc[i] - Dfr*n[i];
+      D[i]     = cgcAL[i] - cgcAR[i];
+      DiffL[i] = cgcAL[i] - cgcL[i];
+      DiffR[i] = cgcAR[i] - cgcR[i];
+    }/*The auxiliary nodes (See [Ferziger and Peric (2002)])*/
+    if (NormDIM(D) < 1.e-8) SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_OUTOFRANGE,"The distance of two elements is zero, check the mesh!");
 
-  if (user->TimeIntegralMethod == EXPLICITMETHOD){
-    uL = xL->ru[0]/xL->r;  uR = xR->ru[0]/xR->r;
-    vL = xL->ru[1]/xL->r;  vR = xR->ru[1]/xR->r;
-    wL = xL->ru[2]/xL->r;  wR = xR->ru[2]/xR->r;
-    EL = xL->rE/xL->r;     ER = xR->rE/xR->r;
-  }else{
-    uL = xL->ru[0];  uR = xR->ru[0];
-    vL = xL->ru[1];  vR = xR->ru[1];
-    wL = xL->ru[2];  wR = xR->ru[2];
-    EL = xL->rE;     ER = xR->rE;
+    if (user->TimeIntegralMethod == EXPLICITMETHOD){
+      uL = xL->ru[0]/xL->r;  uR = xR->ru[0]/xR->r;
+      vL = xL->ru[1]/xL->r;  vR = xR->ru[1]/xR->r;
+      wL = xL->ru[2]/xL->r;  wR = xR->ru[2]/xR->r;
+      EL = xL->rE/xL->r;     ER = xR->rE/xR->r;
+    }else{
+      uL = xL->ru[0];  uR = xR->ru[0];
+      vL = xL->ru[1];  vR = xR->ru[1];
+      wL = xL->ru[2];  wR = xR->ru[2];
+      EL = xL->rE;     ER = xR->rE;
+    }
+
+    gradU = (uL - uR + DotDIM(graduL[0], DiffL) - DotDIM(graduR[0], DiffR))/NormDIM(D); // Gradient u on the Face center
+    gradV = (vL - vR + DotDIM(graduL[1], DiffL) - DotDIM(graduR[1], DiffR))/NormDIM(D); // Gradient v on the Face center
+    gradW = (wL - wR + DotDIM(graduL[2], DiffL) - DotDIM(graduR[2], DiffR))/NormDIM(D); // Gradient w on the Face center
+    gradT = (EL - ER + DotDIM(gradEL, DiffL)    - DotDIM(gradER, DiffR))/NormDIM(D);    // Gradient E on the Face center
+
+    f->r = 0; /*Since the continuity equation does not have diffusion term*/
+
+    {
+      f->ru[0] = user->viscosity*gradU;
+      f->ru[1] = user->viscosity*gradV;
+      f->ru[2] = user->viscosity*gradW;
+    }/*for the momentum equations*/
+
+    f->rE = user->k*gradT; /*for the energy equation*/
   }
 
-  gradU = (uL - uR + DotDIM(graduL[0], DiffL) - DotDIM(graduR[0], DiffR))/NormDIM(D); // Gradient u on the Face center
-  gradV = (vL - vR + DotDIM(graduL[1], DiffL) - DotDIM(graduR[1], DiffR))/NormDIM(D); // Gradient v on the Face center
-  gradW = (wL - wR + DotDIM(graduL[2], DiffL) - DotDIM(graduR[2], DiffR))/NormDIM(D); // Gradient w on the Face center
-  gradT = (EL - ER + DotDIM(gradEL, DiffL)    - DotDIM(gradER, DiffR))/NormDIM(D);    // Gradient E on the Face center
 
-
-  f->r = 0; /*Since the continuity equation does not have diffusion term*/
-
-  {
-    f->ru[0] = user->viscosity*gradU;
-    f->ru[1] = user->viscosity*gradV;
-    f->ru[2] = user->viscosity*gradW;
-  }/*for the momentum equations*/
-
-  f->rE = user->k*gradT; /*for the energy equation*/
   PetscFunctionReturn(0);
 }
 
@@ -1309,6 +1447,7 @@ PetscErrorCode BoundaryWallflow(PetscReal time, const PetscReal *c, const PetscR
     ierr = ExactSolution(time, c, xG, user);CHKERRQ(ierr);
   }else{
     PetscReal xn[DIM],xt[DIM];
+/*
     PetscReal T, e, u, v, w, r, E; // the timperature
     T = 300;
     u = 0.0;
@@ -1318,16 +1457,29 @@ PetscErrorCode BoundaryWallflow(PetscReal time, const PetscReal *c, const PetscR
     e = user->R*T/(user->adiabatic - 1);
 
     E =  e + 0.5*(u*u + v*v + w*w);
+ */
+    PetscReal p, M, E, u, v, w, r, e;
+
+    r = 1.0; // density
+    u = 0; /*Velocity u (the x-direction)*/
+    v = 0; /*Velocity v (the y-direction)*/
+    w = 0; /*Velocity w (the z-direction)*/
+
+    M = 0.8; // is the mach number
+    p = 1.0/(M*M*user->adiabatic); // is the pressure on the far field boundary
+    // Note that e = p/(\rho(\gamma - 1)) and E = e + 0.5*u*u
+    e = p/(r*(user->adiabatic - 1));
+    E =  e + 0.5*(u*u + v*v + w*w);
 
     NormalSplitDIM(n,xI+1,xn,xt);
     if (user->TimeIntegralMethod == EXPLICITMETHOD) {
-      xG[0] = 1.0; /*Density*/
+      xG[0] = r; /*Density*/
       xG[1] = r*u; /*Velocity u (the x-direction)*/
       xG[2] = r*v; /*Velocity v (the y-direction)*/
       xG[3] = r*w; /*Velocity w (the z-direction)*/
       xG[4] = r*E; /*Energy*/
     }else{
-      xG[0] = 1.0; /*Density*/
+      xG[0] = r; /*Density*/
       xG[1] = u; /*Velocity u (the x-direction)*/
       xG[2] = v; /*Velocity v (the y-direction)*/
       xG[3] = w; /*Velocity w (the z-direction)*/
@@ -1343,7 +1495,7 @@ PetscErrorCode BoundaryWallflow(PetscReal time, const PetscReal *c, const PetscR
 #define __FUNCT__ "InitialCondition"
 PetscErrorCode InitialCondition(PetscReal time, const PetscReal *x, PetscReal *u, User user)
 {
-  PetscInt i;
+  //PetscInt i;
 
   PetscFunctionBeginUser;
   if (time != 0.0) SETERRQ1(PETSC_COMM_WORLD,PETSC_ERR_SUP,"No solution known for time %g",time);
@@ -1368,10 +1520,32 @@ PetscErrorCode InitialCondition(PetscReal time, const PetscReal *x, PetscReal *u
     PetscErrorCode  ierr;
     ierr = ExactSolution(time, x, u, user);CHKERRQ(ierr);
   }else{
-    u[0]     = 1.185; /* Density */
-    u[DIM+1] = 1.0; /* Energy */
-    for (i=1; i<DIM+1; i++) u[i] = 0.0; /* Momentum */
-    u[1] = user->inflow_u*0.8;
+    PetscReal p, M, E, uu, vv, ww, r, e, c;
+
+    r = 1.0; // density
+    uu = user->inflow_u; /*Velocity u (the x-direction)*/
+    vv = user->inflow_v; /*Velocity v (the y-direction)*/
+    ww = user->inflow_w; /*Velocity w (the z-direction)*/
+
+    M = 0.8; // is the mach number
+    p = 1.0/(M*M*user->adiabatic); // is the pressure on the far field boundary
+    // Note that e = p/(\rho(\gamma - 1)) and E = e + 0.5*u*u
+    e = p/(r*(user->adiabatic - 1));
+    E =  e + 0.5*(uu*uu + vv*vv + ww*ww);
+
+    if (user->TimeIntegralMethod == EXPLICITMETHOD) {
+      u[0] = r; /*Density*/
+      u[1] = r*uu*M; /*Velocity u (the x-direction)*/
+      u[2] = r*vv*M; /*Velocity v (the y-direction)*/
+      u[3] = r*ww*M; /*Velocity w (the z-direction)*/
+      u[4] = r*E; /*Energy*/
+    }else{
+      u[0] = r; /*Density*/
+      u[1] = uu*M; /*Velocity u (the x-direction)*/
+      u[2] = vv*M; /*Velocity v (the y-direction)*/
+      u[3] = ww*M; /*Velocity w (the z-direction)*/
+      u[4] = E; /*Energy*/
+    }
   }
   PetscFunctionReturn(0);
 }

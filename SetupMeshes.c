@@ -397,7 +397,7 @@ PetscErrorCode ConstructGeometryFVM(Vec *facegeom, Vec *cellgeom, User user)
       }
     }
   }
-  if (user->reconstruct) {
+  if (user->reconstruct || !(user->Euler)) {
     PetscSection sectionGrad;
     ierr = BuildLeastSquares(user->dm, user->cEndInterior, dmFace, fgeom, dmCell, cgeom);CHKERRQ(ierr);
     ierr = DMClone(user->dm,&user->dmGrad);CHKERRQ(ierr);

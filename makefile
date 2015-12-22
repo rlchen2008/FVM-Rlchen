@@ -31,12 +31,12 @@ runtest:
 	-limiter minmod -ts_max_steps 2000 -Euler -RiemannSolver rlchen -CFL 0.9 \
 
 runtest1:
-	-@${MPIEXEC} -n 4 ./AeroSim -show_partition -f ./../meshes/3DCubeFVMHex1.exo -overlap 1 \
+	-@${MPIEXEC} -n 4 ./AeroSim -show_partition -f ./../meshes/3DDoubleCubeFVMHex1.exo -overlap 1 \
 	-time_integral_method 0 -final_time 500.0 -dt 0.001 \
 	-includeenergy -max_time_its 5000 -ts_view -myownexplicitmethod -PressureFlux \
-	-output_solution -solutionfile results/solution -steps_output 1 -inflow_u 340.0 -viscosity 0.01 -k 0.026 \
-	-R 8.3 -T0 0.8 -T1 0.85 -adiabatic 1.4 \
-	-limiter minmod -ts_max_steps 2000 -RiemannSolver Rusanov -CFL 0.9 -Euler \
+	-output_solution -solutionfile results/solution -steps_output 1 -inflow_u 1.0 -viscosity 0.01 -k 0.026 \
+	-R 287.0 -T0 0.8 -T1 0.85 -adiabatic 1.4 \
+	-limiter minmod -ts_max_steps 2000 -RiemannSolver Rusanov -CFL 0.9 \
 
 runbench:
 	-@${MPIEXEC} -n 4 ./AeroSim -show_partition -f ./../meshes/3DCouetteFVM8.exo -overlap 1 \
@@ -50,9 +50,9 @@ rundriven:
 	-@${MPIEXEC} -n 4 ./AeroSim -show_partition -f ./../meshes/3DDrivencavityFVM512.exo -overlap 1 \
 	-reconstruct -time_integral_method 0 -final_time 5.0 -dt 0.001 \
 	-includeenergy -max_time_its 2000 -myownexplicitmethod -PressureFlux \
-	-output_solution -solutionfile solution -steps_output 50 -inflow_u 1.0 -viscosity 0.0 -k 0.026 \
+	-output_solution -solutionfile results/solution -steps_output 50 -inflow_u 1.0 -viscosity 0.0 -k 0.026 \
 	-R 8.3 -T0 0.8 -T1 0.85 -adiabatic 1.4 \
-	-limiter minmod -ts_max_steps 2000 -Euler -RiemannSolver David \
+	-limiter minmod -ts_max_steps 2000 -RiemannSolver David \
 
 SNESOPTIONS = -snes_rtol 1.e-6 -snes_max_it 0
 KSPOPTIONS  = -ksp_type gmres -ksp_pc_side right -ksp_gmres_restart 100 -ksp_rtol 1.e-4 -ksp_max_it 100 -ksp_monitor

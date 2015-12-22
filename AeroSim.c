@@ -550,6 +550,12 @@ PetscErrorCode LoadOptions(MPI_Comm comm, User user)
     user->fd_jacobian_color = PETSC_FALSE;
     ierr = PetscOptionsBool("-fd_jacobian_color","Use the PETSc default finite difference method to construct the Jacobian matrix","",user->fd_jacobian_color,&user->fd_jacobian_color,NULL);CHKERRQ(ierr);
 
+    user->orthogonal_correct = PETSC_FALSE;
+    ierr = PetscOptionsBool("-orthogonal_correct","Do the orthogonal correction for the gradient construction on the surface","",user->orthogonal_correct,&user->orthogonal_correct,NULL);CHKERRQ(ierr);
+
+    user->simple_diffusion = PETSC_FALSE;
+    ierr = PetscOptionsBool("-simple_diffusion","Using a simple version of the diffusion term, that is the Laplace version","",user->simple_diffusion,&user->simple_diffusion,NULL);CHKERRQ(ierr);
+
   }
   ierr = PetscOptionsEnd();CHKERRQ(ierr);
 
