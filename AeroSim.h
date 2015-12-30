@@ -2,7 +2,7 @@
 #define DIM 3                   /* Geometric dimension */
 #define EXPLICITMETHOD 0        /*explicit method for the time integral*/
 #define IMPLICITMETHOD 1        /*implicit method for the time integral*/
-#define MYTOLERANCE 1.e-12        /* The tolerance for a nonzero number, that is if abs(f)<MYTOLERANCE, then let f = 0.0  */
+#define MYTOLERANCE 1.e-20        /* The tolerance for a nonzero number, that is if abs(f)<MYTOLERANCE, then let f = 0.0  */
 
 /* time step specification */
 #define TIMESTEP_STEADY_STATE 0
@@ -163,6 +163,7 @@ extern PetscErrorCode CreateMesh(MPI_Comm comm, User user);
 extern PetscErrorCode LoadOptions(MPI_Comm comm, User user);
 extern PetscErrorCode SetUpLocalSpace(User user);
 extern PetscErrorCode SetInitialCondition(DM dm, Vec X, User user);
+extern PetscErrorCode SetInitialGuess(DM dm, Vec X, User user);
 extern PetscErrorCode Pressure_PG(User user,const Node *x,PetscReal *p);
 extern PetscErrorCode SpeedOfSound_PG(User user,const Node *x,PetscReal *c);
 extern PetscErrorCode ConvectionFlux(User user,const PetscReal *n,const Node *x,Node *f);
@@ -187,6 +188,7 @@ extern PetscErrorCode MyRHSFunction(TS ts,PetscReal time,Vec in,Vec out,void *ct
 extern PetscErrorCode FormMassTimeStepFunction(User user, Algebra algebra, Vec in, Vec out, PetscBool rebuild);
 extern PetscErrorCode FormJacobian(SNES snes, Vec g, Mat jac, Mat B, void *ctx);
 extern PetscErrorCode InitialCondition(PetscReal time, const PetscReal *x, PetscReal *u, User user);
+extern PetscErrorCode InitialGuess(PetscReal time, const PetscReal *x, PetscReal *u, User user);
 extern PetscErrorCode SolveSteadyState(void* ctx);
 extern PetscErrorCode SolveTimeDependent(void* ctx);
 extern PetscErrorCode CaculateLocalMassFunction(DM dm,Vec locX,Vec F,User user);
@@ -251,7 +253,8 @@ extern PetscReal Limit_SinGrad(PetscReal f);
 extern PetscReal Limit_SuperbeeGrad(PetscReal f);
 extern PetscReal Limit_MCGrad(PetscReal f);
 
-extern PetscErrorCode  TSMonitorFunctionError(TS ts,PetscInt step,PetscReal ptime,Vec u,void *ctx);
+extern PetscErrorCode TSMonitorFunctionError(TS ts,PetscInt step,PetscReal ptime,Vec u,void *ctx);
 extern PetscErrorCode ComputeExactSolution(DM dm, PetscReal time, Vec locX, User user);
 extern PetscErrorCode ExactSolution(PetscReal time, const PetscReal *c, PetscReal *xc, User user);
 extern PetscErrorCode ReformatSolution(Vec solution, Vec solution_unscaled, User user);
+extern PetscErrorCode SNESComputeJacobianDefaultDebug(SNES snes,Vec x1,Mat J,Mat B,void *ctx);

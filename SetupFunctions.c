@@ -42,7 +42,9 @@ PetscErrorCode FormFunction(SNES snes, Vec y, Vec out, void *ctx)
 
     /* form the steady state nonlinear function */
     ierr = FormTimeStepFunction(user, algebra, y, algebra->fn);CHKERRQ(ierr);
- //   ierr = VecView(algebra->fn, PETSC_VIEWER_STDOUT_SELF);CHKERRQ(ierr);
+    //ierr = FormMassTimeStepFunction(user, algebra, y, algebra->fn,PETSC_TRUE);CHKERRQ(ierr);
+    //ierr = VecView(y, PETSC_VIEWER_STDOUT_SELF);CHKERRQ(ierr);
+    //ierr = VecView(algebra->fn, PETSC_VIEWER_STDOUT_SELF);CHKERRQ(ierr);
     ierr = VecAXPY(out, 1.0, algebra->fn);CHKERRQ(ierr);
 //    ierr = VecView(out, PETSC_VIEWER_STDOUT_SELF);CHKERRQ(ierr);
 
@@ -107,6 +109,7 @@ PetscErrorCode FormMassTimeStepFunction(User user, Algebra algebra, Vec in, Vec 
   ierr = VecSet(out, 0.0);CHKERRQ(ierr);
 
   ierr = DMGetLocalVector(user->dm, &inLocal);CHKERRQ(ierr);
+  ierr = VecSet(inLocal, 0);CHKERRQ(ierr);
 
   ierr = DMGlobalToLocalBegin(user->dm, in, INSERT_VALUES, inLocal);CHKERRQ(ierr);
   ierr = DMGlobalToLocalEnd(user->dm, in, INSERT_VALUES, inLocal);CHKERRQ(ierr);
@@ -264,6 +267,7 @@ PetscErrorCode CaculateLocalMassFunction(DM dm, Vec locX, Vec F, User user)
   const PetscReal *x;
   PetscReal       *f;
   PetscInt          cStart, cell;
+  PetscReal       r, u[DIM], E;
 //  Physics           phys = user->model->physics;
 
   PetscFunctionBeginUser;
@@ -276,15 +280,29 @@ PetscErrorCode CaculateLocalMassFunction(DM dm, Vec locX, Vec F, User user)
     PetscReal       *fref;
     const PetscReal *xref;
 
-    ierr = DMPlexPointGlobalRead(dm,cell,x,&xref);CHKERRQ(ierr); /*For the unkown variables*/
+    ierr = DMPlexPointLocalRead(dm,cell,x,&xref);CHKERRQ(ierr); /*For the unkown variables*/
     ierr = DMPlexPointGlobalRef(dm,cell,f,&fref);CHKERRQ(ierr);
 //    if (!fref){ PetscPrintf(PETSC_COMM_WORLD,"%d, %d\n", cell, user->cEndInterior);}
+    if (user->TimeIntegralMethod == EXPLICITMETHOD){
+      r    = xref[0];
+      u[0] = xref[1]/r;
+      u[1] = xref[2]/r;
+      u[2] = xref[3]/r;
+      E    = xref[4]/r;
+    }else{
+      r    = xref[0];
+      u[0] = xref[1];
+      u[1] = xref[2];
+      u[2] = xref[3];
+      E    = xref[4];
+    }
+
     if (fref){
-      fref[0] = xref[0];/*the density*/
+      fref[0] = r;/*the density*/
       for (i=1; i<DIM+1; i++) {
-        fref[i] = xref[i];
+        fref[i] = r*u[i-1];
       }/*viscosity*/
-      fref[DIM+1] = xref[DIM+1];/*Energy*/
+      fref[DIM+1] = r*E;/*Energy*/
     }
   }
 
@@ -450,14 +468,14 @@ PetscErrorCode CaculateLocalFunction_Upwind(DM dm,DM dmFace,DM dmCell,PetscReal 
         if (fL) {
           fL[i] -= FaceArea*(fluxcon[i] + fluxdiff[i])/cgL->volume;
           if (PetscAbsScalar(fL[i])<MYTOLERANCE) {
-            fL[i] = 0.0;
+            //fL[i] = 0.0;
           } // to avoid the too small number
           //PetscPrintf(PETSC_COMM_SELF, "cell[0] (%3.4g, %3.4g, %3.4g), face (%3.4g, %3.4g, %3.4g),fluxcon[i]=%3.4g, FaceArea=%3.4g, volume=%3.4g, fL[%d]= %3.4g\n",cgL->centroid[0], cgL->centroid[1], cgL->centroid[2],fg->centroid[0], fg->centroid[1], fg->centroid[2], fluxcon[i], FaceArea, cgL->volume, i, fL[i]);
         }
         if (fR) {
           fR[i] += FaceArea*(fluxcon[i] + fluxdiff[i])/cgR->volume;
           if (PetscAbsScalar(fR[i])<MYTOLERANCE) {
-            fR[i] = 0.0;
+            //fR[i] = 0.0;
           } // to avoid the too small number
           //PetscPrintf(PETSC_COMM_SELF, "cell[1] (%3.4g, %3.4g, %3.4g), face (%3.4g, %3.4g, %3.4g),fluxcon[i]=%3.4g, FaceArea=%3.4g, volume=%3.4g, fR[%d]= %3.4g\n",cgR->centroid[0], cgR->centroid[1], cgR->centroid[2],fg->centroid[0], fg->centroid[1], fg->centroid[2], fluxcon[i], FaceArea, cgL->volume, i, fR[i]);
         }
@@ -1280,6 +1298,7 @@ PetscErrorCode DiffusionFlux(User user, const PetscReal *cgradL, const PetscReal
 
 PetscErrorCode RiemannSolver(User user, const PetscReal *cgradL, const PetscReal *cgradR, const PetscReal *fgc, const PetscReal *cgcL, const PetscReal *cgcR, const PetscReal *n, const PetscReal *xL, const PetscReal *xR, PetscReal *fluxcon, PetscReal *fluxdiff)
 {
+//ierr = RiemannSolver(user, cgrad[0], cgrad[1], fg->centroid, cgL->centroid, cgR->centroid, fg->normal, xL, xR, fluxcon, fluxdiff);CHKERRQ(ierr);
   PetscErrorCode  ierr;
   PetscReal     cL,cR,speed;
   const Node      *ruL = (const Node*)xL,*ruR = (const Node*)xR;
@@ -1343,12 +1362,20 @@ PetscErrorCode RiemannSolver(User user, const PetscReal *cgradL, const PetscReal
     speed = 0.0;
   }
 
-// the convection terms
-  fluxcon[0] = 0.5*(fLcon.r + fRcon.r) + 0.5*speed*(ruL->r - ruR->r);                 // the continuity equation
-  fluxcon[1] = 0.5*(fLcon.ru[0] + fRcon.ru[0]) + 0.5*speed*(ruL->ru[0] - ruR->ru[0]); // the momentum equation x
-  fluxcon[2] = 0.5*(fLcon.ru[1] + fRcon.ru[1]) + 0.5*speed*(ruL->ru[1] - ruR->ru[1]); // the momentum equation y
-  fluxcon[3] = 0.5*(fLcon.ru[2] + fRcon.ru[2]) + 0.5*speed*(ruL->ru[2] - ruR->ru[2]); // the momentum equation z
-  fluxcon[4] = 0.5*(fLcon.rE + fRcon.rE) + 0.5*speed*(ruL->rE - ruR->rE);             // the energy equation
+// the convection terms, the second term should be ru or u???? not sure
+  if (user->TimeIntegralMethod == EXPLICITMETHOD){
+    fluxcon[0] = 0.5*(fLcon.r + fRcon.r)         + 0.5*speed*(ruL->r - ruR->r);         // the continuity equation
+    fluxcon[1] = 0.5*(fLcon.ru[0] + fRcon.ru[0]) + 0.5*speed*(ruL->ru[0] - ruR->ru[0]); // the momentum equation x
+    fluxcon[2] = 0.5*(fLcon.ru[1] + fRcon.ru[1]) + 0.5*speed*(ruL->ru[1] - ruR->ru[1]); // the momentum equation y
+    fluxcon[3] = 0.5*(fLcon.ru[2] + fRcon.ru[2]) + 0.5*speed*(ruL->ru[2] - ruR->ru[2]); // the momentum equation z
+    fluxcon[4] = 0.5*(fLcon.rE + fRcon.rE)       + 0.5*speed*(ruL->rE - ruR->rE);       // the energy equation
+  }else{
+    fluxcon[0] = 0.5*(fLcon.r + fRcon.r)         + 0.5*speed*(ruL->r - ruR->r);                       // the continuity equation
+    fluxcon[1] = 0.5*(fLcon.ru[0] + fRcon.ru[0]) + 0.5*speed*(ruL->r*ruL->ru[0] - ruR->r*ruR->ru[0]); // the momentum equation x
+    fluxcon[2] = 0.5*(fLcon.ru[1] + fRcon.ru[1]) + 0.5*speed*(ruL->r*ruL->ru[1] - ruR->r*ruR->ru[1]); // the momentum equation y
+    fluxcon[3] = 0.5*(fLcon.ru[2] + fRcon.ru[2]) + 0.5*speed*(ruL->r*ruL->ru[2] - ruR->r*ruR->ru[2]); // the momentum equation z
+    fluxcon[4] = 0.5*(fLcon.rE + fRcon.rE)       + 0.5*speed*(ruL->r*ruL->rE    - ruR->r*ruR->rE);    // the energy equation
+  }
 
   //printf("flux (%f, %f, %f, %f, %f)\n", fluxcon[0], fluxcon[1], fluxcon[2], fluxcon[3], fluxcon[4]);
 
@@ -1379,32 +1406,35 @@ PetscErrorCode BoundaryInflow(PetscReal time, const PetscReal *c, const PetscRea
   if(user->benchmark_couette){
     ierr = ExactSolution(time, c, xG, user);CHKERRQ(ierr);
   }else{
-    PetscReal p, M, E, u, v, w, r, e, c;
+    PetscReal p, M, E, u, v, w, r, e, c, T;
 
-    r = 1.0; // density
-    u = user->inflow_u; /*Velocity u (the x-direction)*/
-    v = user->inflow_v; /*Velocity v (the y-direction)*/
-    w = user->inflow_w; /*Velocity w (the z-direction)*/
+    T = 300.0; // far field temperature is 300K
+    r = 1.16; //  density at 300K is 1.16 kg/m^3
+    c = 349.02;  // speed of sound at 300K is 349.02 m/s^2
+    p = user->R*r*T; // The equation of state: p = rho*R*T, here R = 287 J/(kg*K), the unit of p is Pa
 
     M = 0.8; // is the mach number
-    p = 1.0/(M*M*user->adiabatic); // is the pressure on the far field boundary
+    u = M*user->inflow_u; /*Velocity u (the x-direction)*/
+    v = M*user->inflow_v; /*Velocity v (the y-direction)*/
+    w = M*user->inflow_w; /*Velocity w (the z-direction)*/
+    //p = 1.0/(M*M*user->adiabatic); // is the pressure on the far field boundary
     // Note that e = p/(\rho(\gamma - 1)) and E = e + 0.5*u*u
     e = p/(r*(user->adiabatic - 1));
     E =  e + 0.5*(u*u + v*v + w*w);
-    c = PetscSqrtScalar(user->adiabatic*PetscAbsScalar(p)/r);// speed of sound
+    //c = PetscSqrtScalar(user->adiabatic*PetscAbsScalar(p)/r);// speed of sound
     //printf("speed of sound %f\n", c);
 
     if (user->TimeIntegralMethod == EXPLICITMETHOD) {
       xG[0] = r; /*Density*/
-      xG[1] = r*u*M; /*Velocity u (the x-direction)*/
-      xG[2] = r*v*M; /*Velocity v (the y-direction)*/
-      xG[3] = r*w*M; /*Velocity w (the z-direction)*/
+      xG[1] = r*u; /*Velocity u (the x-direction)*/
+      xG[2] = r*v; /*Velocity v (the y-direction)*/
+      xG[3] = r*w; /*Velocity w (the z-direction)*/
       xG[4] = r*E; /*Energy*/
     }else{
       xG[0] = r; /*Density*/
-      xG[1] = u*M; /*Velocity u (the x-direction)*/
-      xG[2] = v*M; /*Velocity v (the y-direction)*/
-      xG[3] = w*M; /*Velocity w (the z-direction)*/
+      xG[1] = u; /*Velocity u (the x-direction)*/
+      xG[2] = v; /*Velocity v (the y-direction)*/
+      xG[3] = w; /*Velocity w (the z-direction)*/
       xG[4] = E; /*Energy*/
     }
   }
@@ -1447,27 +1477,18 @@ PetscErrorCode BoundaryWallflow(PetscReal time, const PetscReal *c, const PetscR
     ierr = ExactSolution(time, c, xG, user);CHKERRQ(ierr);
   }else{
     PetscReal xn[DIM],xt[DIM];
-/*
-    PetscReal T, e, u, v, w, r, E; // the timperature
-    T = 300;
-    u = 0.0;
-    v = 0.0;
-    w = 0.0;
-    r = xI[0];
-    e = user->R*T/(user->adiabatic - 1);
 
-    E =  e + 0.5*(u*u + v*v + w*w);
- */
-    PetscReal p, M, E, u, v, w, r, e;
+    PetscReal p, M, E, u, v, w, r, e, c, T;
 
-    r = 1.0; // density
+    T = 300.0; // far field temperature is 300K
+    r = 1.16; //  density at 300K is 1.16 kg/m^3
+    c = 349.02;  // speed of sound at 300K is 349.02 m/s^2
+    p = user->R*r*T; // The equation of state: p = rho*R*T, here R = 287 J/(kg*K), the unit of p is Pa
     u = 0; /*Velocity u (the x-direction)*/
     v = 0; /*Velocity v (the y-direction)*/
     w = 0; /*Velocity w (the z-direction)*/
 
     M = 0.8; // is the mach number
-    p = 1.0/(M*M*user->adiabatic); // is the pressure on the far field boundary
-    // Note that e = p/(\rho(\gamma - 1)) and E = e + 0.5*u*u
     e = p/(r*(user->adiabatic - 1));
     E =  e + 0.5*(u*u + v*v + w*w);
 
@@ -1501,55 +1522,97 @@ PetscErrorCode InitialCondition(PetscReal time, const PetscReal *x, PetscReal *u
   if (time != 0.0) SETERRQ1(PETSC_COMM_WORLD,PETSC_ERR_SUP,"No solution known for time %g",time);
   if(user->benchmark_couette){
 
-    PetscReal U, H, T;
-    PetscReal y;
-
-    y = x[1];
-
-    U = 0.3; H = 10;
-    T = user->T0 + (y/H)*(user->T1 - user->T0) + (user->viscosity*U*U)/(2*user->k)*(y/H)*(1.0 - y/H);
-
-    u[0] = 1.0/T; // Density
-    u[1] = u[0]*y*U/H + 0.001; // Velocity rho*u (the x-direction)
-    u[2] = 0.0; // Velocity v (the y-direction)
-    u[3] = 0.0; // Velocity w (the z-direction)
-    u[4] = 1.0/(user->adiabatic*(user->adiabatic-1)) + 0.5*(u[1]*u[1]+u[2]*u[2]+u[3]*u[3])/u[0]; //the density total energy rho*E = rho*e + 0.5*rho*|u|^2 = rho*(p/(rho*(gamma-1))) + 0.5*rho*|u|^2
-
-    u[1] = 0;
+    u[0] = 1.0; // Density
+    u[1] = 1.0; // Velocity rho*u (the x-direction)
+    u[2] = 1.0; // Velocity v (the y-direction)
+    u[3] = 1.0; // Velocity w (the z-direction)
+    u[4] = 1.0;
 
     PetscErrorCode  ierr;
     ierr = ExactSolution(time, x, u, user);CHKERRQ(ierr);
+    u[1] = 0;
   }else{
-    PetscReal p, M, E, uu, vv, ww, r, e, c;
+    PetscReal p, M, E, uu, vv, ww, r, e, c, T;
 
-    r = 1.0; // density
-    uu = user->inflow_u; /*Velocity u (the x-direction)*/
-    vv = user->inflow_v; /*Velocity v (the y-direction)*/
-    ww = user->inflow_w; /*Velocity w (the z-direction)*/
+    T = 300.0; // far field temperature is 300K
+    r = 1.16; //  density at 300K is 1.16 kg/m^3
+    c = 349.02;  // speed of sound at 300K is 349.02 m/s^2
+    p = user->R*r*T; // The equation of state: p = rho*R*T, here R = 287 J/(kg*K), the unit of p is Pa
 
     M = 0.8; // is the mach number
-    p = 1.0/(M*M*user->adiabatic); // is the pressure on the far field boundary
-    // Note that e = p/(\rho(\gamma - 1)) and E = e + 0.5*u*u
+    uu = M*user->inflow_u; /*Velocity u (the x-direction)*/
+    vv = M*user->inflow_v; /*Velocity v (the y-direction)*/
+    ww = M*user->inflow_w; /*Velocity w (the z-direction)*/
     e = p/(r*(user->adiabatic - 1));
     E =  e + 0.5*(uu*uu + vv*vv + ww*ww);
 
     if (user->TimeIntegralMethod == EXPLICITMETHOD) {
       u[0] = r; /*Density*/
-      u[1] = r*uu*M; /*Velocity u (the x-direction)*/
-      u[2] = r*vv*M; /*Velocity v (the y-direction)*/
-      u[3] = r*ww*M; /*Velocity w (the z-direction)*/
+      u[1] = r*uu; /*Velocity u (the x-direction)*/
+      u[2] = r*vv; /*Velocity v (the y-direction)*/
+      u[3] = r*ww; /*Velocity w (the z-direction)*/
       u[4] = r*E; /*Energy*/
     }else{
       u[0] = r; /*Density*/
-      u[1] = uu*M; /*Velocity u (the x-direction)*/
-      u[2] = vv*M; /*Velocity v (the y-direction)*/
-      u[3] = ww*M; /*Velocity w (the z-direction)*/
+      u[1] = uu; /*Velocity u (the x-direction)*/
+      u[2] = vv; /*Velocity v (the y-direction)*/
+      u[3] = ww; /*Velocity w (the z-direction)*/
       u[4] = E; /*Energy*/
     }
   }
   PetscFunctionReturn(0);
 }
 
+#undef __FUNCT__
+#define __FUNCT__ "InitialGuess"
+PetscErrorCode InitialGuess(PetscReal time, const PetscReal *x, PetscReal *u, User user)
+{
+  //PetscInt i;
+
+  PetscFunctionBeginUser;
+  if (time != 0.0) SETERRQ1(PETSC_COMM_WORLD,PETSC_ERR_SUP,"No solution known for time %g",time);
+  if(user->benchmark_couette){
+
+    u[0] = 1.01; // Density
+    u[1] = 1.1; // Velocity rho*u (the x-direction)
+    u[2] = 1.2; // Velocity v (the y-direction)
+    u[3] = 1.3; // Velocity w (the z-direction)
+    u[4] = 1.4;
+
+    PetscErrorCode  ierr;
+    ierr = ExactSolution(time, x, u, user);CHKERRQ(ierr);
+    u[1] = 0;
+  }else{
+    PetscReal p, M, E, uu, vv, ww, r, e, c, T;
+
+    T = 300.0; // far field temperature is 300K
+    r = 1.16; //  density at 300K is 1.16 kg/m^3
+    c = 349.02;  // speed of sound at 300K is 349.02 m/s^2
+    p = user->R*r*T; // The equation of state: p = rho*R*T, here R = 287 J/(kg*K), the unit of p is Pa
+
+    M = 0.8; // is the mach number
+    uu = M*user->inflow_u; /*Velocity u (the x-direction)*/
+    vv = M*user->inflow_v; /*Velocity v (the y-direction)*/
+    ww = M*user->inflow_w; /*Velocity w (the z-direction)*/
+    e = p/(r*(user->adiabatic - 1));
+    E =  e + 0.5*(uu*uu + vv*vv + ww*ww);
+
+    if (user->TimeIntegralMethod == EXPLICITMETHOD) {
+      u[0] = r; /*Density*/
+      u[1] = r*uu; /*Velocity u (the x-direction)*/
+      u[2] = r*vv; /*Velocity v (the y-direction)*/
+      u[3] = r*ww; /*Velocity w (the z-direction)*/
+      u[4] = r*E; /*Energy*/
+    }else{
+      u[0] = r; /*Density*/
+      u[1] = uu; /*Velocity u (the x-direction)*/
+      u[2] = vv; /*Velocity v (the y-direction)*/
+      u[3] = ww; /*Velocity w (the z-direction)*/
+      u[4] = E; /*Energy*/
+    }
+  }
+  PetscFunctionReturn(0);
+}
 
 #undef __FUNCT__
 #define __FUNCT__ "DMPlexGetIndex"
@@ -1728,6 +1791,11 @@ PetscErrorCode ExactSolution(PetscReal time, const PetscReal *c, PetscReal *xc, 
   PetscFunctionBeginUser;
 
   y = c[1];
+  if (y<5.0){
+    y = 0.0;
+  }else{
+    y = 10.0;
+  }
   U = 0.3; H = 10;
 
   u = y*U/H;
@@ -1747,6 +1815,12 @@ PetscErrorCode ExactSolution(PetscReal time, const PetscReal *c, PetscReal *xc, 
     xc[3] = 0.0; /*Velocity w (the z-direction)*/
     xc[4] = 1.0/(user->adiabatic*(user->adiabatic-1)) + 0.5*(xc[1]*xc[1]+xc[2]*xc[2]+xc[3]*xc[3])/xc[0]; /*the density total energy rho*E = rho*e + 0.5*rho*|u|^2 = rho*(p/(rho*(gamma-1))) + 0.5*rho*|u|^2*/
   }
+
+    //xc[0] = 1.0; /*Density*/
+    //xc[1] = 1.0*y; /*Velocity rho*u (the x-direction)*/
+    //xc[2] = 0.0; /*Velocity v (the y-direction)*/
+    //xc[3] = 0.0; /*Velocity w (the z-direction)*/
+    //xc[4] = 1.0; /*the density total energy rho*E = rho*e + 0.5*rho*|u|^2 = rho*(p/(rho*(gamma-1))) + 0.5*rho*|u|^2*/
 
   PetscFunctionReturn(0);
 }

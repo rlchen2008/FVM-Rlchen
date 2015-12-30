@@ -372,18 +372,6 @@ int main(int argc, char **argv)
       ierr = SolveTimeDependent(user);CHKERRQ(ierr);
     }
 
-    if (user->output_solution){
-      PetscViewer    viewer;
-      Vec            solution_unscaled; // Note the the algebra->solution is scaled by the density, so this is for the unscaled solution
-
-      ierr = VecDuplicate(algebra->solution, &solution_unscaled);CHKERRQ(ierr);
-      //ierr = ReformatSolution(algebra->solution, solution_unscaled, user);CHKERRQ(ierr);
-      ierr = OutputVTK(user->dm, "solution.vtk", &viewer);CHKERRQ(ierr);
-      ierr = VecView(solution_unscaled, viewer);CHKERRQ(ierr);
-      ierr = VecDestroy(&solution_unscaled);CHKERRQ(ierr);
-      ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
-    }
-
     if(user->benchmark_couette) {
       PetscViewer    viewer;
       PetscReal      norm;
@@ -613,6 +601,8 @@ PetscErrorCode SolveSteadyState(void* ctx)
   ierr = SNESMonitorSet(user->snes, MonitorFunction, (void*) user,
 			PETSC_NULL);CHKERRQ(ierr);
 
+  ierr = SetInitialGuess(user->dm, algebra->solution, user);CHKERRQ(ierr);
+
   ierr = PetscTime(&v1);CHKERRQ(ierr);
 
   /* solving */
@@ -695,6 +685,42 @@ PetscErrorCode SolveTimeDependent(void* ctx)
 		       v2 - v1, snesreason, SNESConvergedReasons[snesreason]);CHKERRQ(ierr);
     }
 
+    { // Monitor the difference of two steps' solution
+          PetscReal         norm;
+          ierr = VecAXPY(algebra->oldsolution, -1, algebra->solution);CHKERRQ(ierr);
+          ierr = VecNorm(algebra->oldsolution,NORM_2,&norm);CHKERRQ(ierr);
+          if (user->current_step%10==0) {
+            ierr = PetscPrintf(PETSC_COMM_WORLD,"Step %D at time %g with ||u_k-u_{k-1}|| = %g \n",
+                              user->current_step, user->current_time, norm);CHKERRQ(ierr);
+          }
+          if((norm<1.e-6)||(user->current_step > user->max_time_its)){
+            if(norm<1.e-6) ierr = PetscPrintf(PETSC_COMM_WORLD,"\n Convergence with ||u_k-u_{k-1}|| = %g < 1.e-6\n\n", norm);CHKERRQ(ierr);
+            if(user->current_step > user->max_time_its) ierr = PetscPrintf(PETSC_COMM_WORLD,"\n Convergence with reaching the max time its\n\n");CHKERRQ(ierr);
+            break;
+          }
+      }
+
+        // output the solution
+        if (user->output_solution && (user->current_step%user->steps_output==0)){
+          PetscViewer    viewer;
+          Vec            solution_unscaled; // Note the the algebra->solution is scaled by the density, so this is for the unscaled solution
+          PetscInt     nplot;
+          char         fileName[2048];
+
+          nplot = user->current_step/user->steps_output;
+          // update file name for the current time step
+          ierr = VecDuplicate(algebra->solution, &solution_unscaled);CHKERRQ(ierr);
+
+          ierr = ReformatSolution(algebra->solution, solution_unscaled, user);CHKERRQ(ierr);
+
+          ierr = PetscSNPrintf(fileName, sizeof(fileName),"%s_%d.vtk",user->solutionfile, nplot);CHKERRQ(ierr);
+          ierr = PetscPrintf(PETSC_COMM_WORLD,"Outputing solution %s (current step %d, time %f)\n", fileName, user->current_step, user->current_time);CHKERRQ(ierr);
+          ierr = OutputVTK(user->dm, fileName, &viewer);CHKERRQ(ierr);
+          ierr = VecView(solution_unscaled, viewer);CHKERRQ(ierr);
+          ierr = VecDestroy(&solution_unscaled);CHKERRQ(ierr);
+          ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+        }
+
     user->current_step++;
 
   }/* end while*/
@@ -746,6 +772,49 @@ PetscErrorCode SetInitialCondition(DM dm, Vec X, User user)
   PetscFunctionReturn(0);
 }
 
+#undef __FUNCT__
+#define __FUNCT__ "SetInitialGuess"
+PetscErrorCode SetInitialGuess(DM dm, Vec X, User user)
+{
+  DM                dmCell;
+  const PetscReal *cellgeom;
+  PetscReal       *x;
+  PetscInt          cStart, cEnd, cEndInterior = user->cEndInterior, c;
+  PetscErrorCode    ierr;
+
+  PetscFunctionBeginUser;
+  ierr = VecGetDM(user->cellgeom, &dmCell);CHKERRQ(ierr);
+  ierr = DMPlexGetHeightStratum(dm, 0, &cStart, &cEnd);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(user->cellgeom, &cellgeom);CHKERRQ(ierr);
+  ierr = VecGetArray(X, &x);CHKERRQ(ierr);
+  for (c = cStart; c < cEndInterior; ++c) {
+    const CellGeom *cg;
+    PetscReal    *xc;
+
+    ierr = DMPlexPointLocalRead(dmCell,c,cellgeom,&cg);CHKERRQ(ierr);
+    ierr = DMPlexPointGlobalRef(dm,c,x,&xc);CHKERRQ(ierr);
+    if (xc) {
+      ierr = InitialGuess(0.0, cg->centroid, xc, user);CHKERRQ(ierr);
+    }
+    //printf("cell %d, coord (%g, %g, %g)\n", c, cg->centroid[0], cg->centroid[1], cg->centroid[2]);
+  }
+  ierr = VecRestoreArrayRead(user->cellgeom, &cellgeom);CHKERRQ(ierr);
+  ierr = VecRestoreArray(X, &x);CHKERRQ(ierr);
+
+  { //Apply the Boundary condition for the intial condition
+    Vec             XLocal;
+    ierr = DMGetLocalVector(user->dm, &XLocal);CHKERRQ(ierr);
+    ierr = VecSet(XLocal, 0);CHKERRQ(ierr);
+
+    ierr = DMGlobalToLocalBegin(user->dm, X, INSERT_VALUES, XLocal);CHKERRQ(ierr);
+    ierr = DMGlobalToLocalEnd(user->dm, X, INSERT_VALUES, XLocal);CHKERRQ(ierr);
+    ierr = ApplyBC(user->dm, user->current_time, XLocal, user);CHKERRQ(ierr);
+    ierr = DMLocalToGlobalBegin(user->dm, XLocal, INSERT_VALUES, X);CHKERRQ(ierr);
+    ierr = DMLocalToGlobalEnd(user->dm, XLocal, INSERT_VALUES, X);CHKERRQ(ierr);
+  }
+
+  PetscFunctionReturn(0);
+}
 
 #undef __FUNCT__
 #define __FUNCT__ "OutputVTK"
