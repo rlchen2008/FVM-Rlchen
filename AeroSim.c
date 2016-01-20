@@ -78,6 +78,11 @@ int main(int argc, char **argv)
 
   ierr = LimiterSetup(user);CHKERRQ(ierr);
 
+  if(user->benchmark_couette) {
+    ierr = DMCreateGlobalVector(user->dm, &algebra->exactsolution);CHKERRQ(ierr);
+    ierr = ComputeExactSolution(user->dm, user->current_time, algebra->exactsolution, user);CHKERRQ(ierr);
+  }
+
   if (user->TimeIntegralMethod == EXPLICITMETHOD) { // explicit method
     if(user->myownexplicitmethod){// Using the fully explicit method based on my own routing
       ierr = PetscPrintf(PETSC_COMM_WORLD,"Using the fully explicit method based on my own routing\n");CHKERRQ(ierr);
@@ -87,10 +92,16 @@ int main(int argc, char **argv)
       ierr = PetscObjectSetName((PetscObject) algebra->solution, "solution");CHKERRQ(ierr);
       ierr = VecSet(algebra->solution, 0);CHKERRQ(ierr);
       ierr = SetInitialCondition(user->dm, algebra->solution, user);CHKERRQ(ierr);
+      //ierr = VecView(algebra->solution, PETSC_VIEWER_STDOUT_WORLD);CHKERRQ(ierr);
       if(1){
         PetscViewer    viewer;
+        Vec            solution_unscaled; // Note the the u is scaled by the density, so this is for the unscaled solution
+
+        ierr = VecDuplicate(algebra->solution, &solution_unscaled);CHKERRQ(ierr);
+        ierr = ReformatSolution(algebra->solution, solution_unscaled, user);CHKERRQ(ierr);
         ierr = OutputVTK(user->dm, "intialcondition.vtk", &viewer);CHKERRQ(ierr);
-        ierr = VecView(algebra->solution, viewer);CHKERRQ(ierr);
+        ierr = VecView(solution_unscaled, viewer);CHKERRQ(ierr);
+        ierr = VecDestroy(&solution_unscaled);CHKERRQ(ierr);
         ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
         ierr = PetscPrintf(PETSC_COMM_WORLD,"Outputing the initial condition intialcondition.vtk!!! \n");CHKERRQ(ierr);
       }
@@ -112,7 +123,7 @@ int main(int argc, char **argv)
             ierr = VecView(algebra->fn, viewer);CHKERRQ(ierr);
             ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
           }
-
+        //ierr = PetscPrintf(PETSC_COMM_WORLD,"Step %d !!!!!!!!!!!!!!!\n", user->current_step);CHKERRQ(ierr);
         if(user->Explicit_RK2){
         /*
           U^n_1   = U^n + 0.5*dt*f(U^n)
@@ -261,6 +272,19 @@ int main(int argc, char **argv)
           ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
         }
 
+        if (user->current_step%user->steps_output==0){
+          if(user->benchmark_couette) {
+            PetscReal      norm;
+            Vec            E;
+
+            ierr = VecDuplicate(algebra->exactsolution, &E);CHKERRQ(ierr);
+            ierr = VecWAXPY(E, -1, algebra->exactsolution, algebra->solution);CHKERRQ(ierr);
+            ierr = VecNorm(E,NORM_INFINITY,&norm);CHKERRQ(ierr);
+            ierr = VecDestroy(&E);CHKERRQ(ierr);
+            ierr = PetscPrintf(PETSC_COMM_WORLD,"Current time at %f, Error: ||u_k-u|| = %g \n", user->current_time, norm);CHKERRQ(ierr);
+          }
+        }
+
         user->current_step++;
 
       }
@@ -297,11 +321,6 @@ int main(int argc, char **argv)
       ierr = PetscPrintf(PETSC_COMM_WORLD,"%s at time %g after %D steps\n",TSConvergedReasons[reason],ftime,nsteps);CHKERRQ(ierr);
       ierr = TSDestroy(&ts);CHKERRQ(ierr);
 
-    }
-
-    if(user->benchmark_couette) {
-      ierr = DMCreateGlobalVector(user->dm, &algebra->exactsolution);CHKERRQ(ierr);
-      ierr = ComputeExactSolution(user->dm, user->current_time, algebra->exactsolution, user);CHKERRQ(ierr);
     }
 
     if(user->benchmark_couette) {
@@ -349,13 +368,7 @@ int main(int argc, char **argv)
     }else{
      algebra->P = algebra->J;
     }
-/*
-    {
-      PetscInt row, col;
-      ierr = MatGetSize(algebra->J, &row, &col);CHKERRQ(ierr);
-      ierr = PetscPrintf(PETSC_COMM_WORLD, "Jacobian Matrix size row %d, col %d\n", row, col);CHKERRQ(ierr);
-    }
-*/
+
     ierr = MatSetOption(algebra->J, MAT_NEW_NONZERO_ALLOCATION_ERR, PETSC_FALSE);CHKERRQ(ierr);
 
     /*set nonlinear function */
@@ -375,9 +388,6 @@ int main(int argc, char **argv)
     if(user->benchmark_couette) {
       PetscViewer    viewer;
       PetscReal      norm;
-
-      ierr = DMCreateGlobalVector(user->dm, &algebra->exactsolution);CHKERRQ(ierr);
-      ierr = ComputeExactSolution(user->dm, user->current_time, algebra->exactsolution, user);CHKERRQ(ierr);
 
       ierr = OutputVTK(user->dm, "exact_solution.vtk", &viewer);CHKERRQ(ierr);
       ierr = VecView(algebra->exactsolution, viewer);CHKERRQ(ierr);
@@ -551,6 +561,12 @@ PetscErrorCode LoadOptions(MPI_Comm comm, User user)
   {
     user->benchmark_couette = PETSC_FALSE;
     ierr = PetscOptionsBool("-benchmark_couette","For the Couette benchmark problem test","",user->benchmark_couette,&user->benchmark_couette,NULL);CHKERRQ(ierr);
+    user->benchmark_KT = PETSC_FALSE;
+    ierr = PetscOptionsBool("-benchmark_KT","For the benchmark problem test in paper [Kurganov and Tadmor 2000]","",user->benchmark_KT,&user->benchmark_KT,NULL);CHKERRQ(ierr);
+    user->KTcase = 1;
+    ierr = PetscOptionsInt("-KTcase", "The number of KT cases (there 15 cases)", "", user->KTcase, &user->KTcase, NULL);CHKERRQ(ierr);
+
+
     user->max_time_its = 0;
     ierr = PetscOptionsInt("-max_time_its","The maximum time steps","",user->max_time_its,&user->max_time_its,NULL);CHKERRQ(ierr);
     user->Explicit_RK2 = PETSC_FALSE;
@@ -684,7 +700,13 @@ PetscErrorCode SolveTimeDependent(void* ctx)
 		       "Solution time of %f sec, SNES diverged %d (%s).\n",
 		       v2 - v1, snesreason, SNESConvergedReasons[snesreason]);CHKERRQ(ierr);
     }
-
+/*
+    {
+      PetscLogDouble    space =0;
+      ierr =  PetscMallocGetCurrentUsage(&space);CHKERRQ(ierr);
+      ierr =  PetscPrintf(PETSC_COMM_WORLD,"Current Usage of Memery %g M\n", space/(1024*1024));CHKERRQ(ierr);
+    }
+*/
     { // Monitor the difference of two steps' solution
           PetscReal         norm;
           ierr = VecAXPY(algebra->oldsolution, -1, algebra->solution);CHKERRQ(ierr);
@@ -703,22 +725,34 @@ PetscErrorCode SolveTimeDependent(void* ctx)
         // output the solution
         if (user->output_solution && (user->current_step%user->steps_output==0)){
           PetscViewer    viewer;
-          Vec            solution_unscaled; // Note the the algebra->solution is scaled by the density, so this is for the unscaled solution
+          //Vec            solution_unscaled; // Note the the algebra->solution is scaled by the density, so this is for the unscaled solution
           PetscInt     nplot;
           char         fileName[2048];
 
           nplot = user->current_step/user->steps_output;
           // update file name for the current time step
-          ierr = VecDuplicate(algebra->solution, &solution_unscaled);CHKERRQ(ierr);
+          //ierr = VecDuplicate(algebra->solution, &solution_unscaled);CHKERRQ(ierr);
 
-          ierr = ReformatSolution(algebra->solution, solution_unscaled, user);CHKERRQ(ierr);
+          //ierr = ReformatSolution(algebra->solution, solution_unscaled, user);CHKERRQ(ierr);
 
           ierr = PetscSNPrintf(fileName, sizeof(fileName),"%s_%d.vtk",user->solutionfile, nplot);CHKERRQ(ierr);
           ierr = PetscPrintf(PETSC_COMM_WORLD,"Outputing solution %s (current step %d, time %f)\n", fileName, user->current_step, user->current_time);CHKERRQ(ierr);
           ierr = OutputVTK(user->dm, fileName, &viewer);CHKERRQ(ierr);
-          ierr = VecView(solution_unscaled, viewer);CHKERRQ(ierr);
-          ierr = VecDestroy(&solution_unscaled);CHKERRQ(ierr);
+          ierr = VecView(algebra->solution, viewer);CHKERRQ(ierr);
+          //ierr = VecView(solution_unscaled, viewer);CHKERRQ(ierr);
+          //ierr = VecDestroy(&solution_unscaled);CHKERRQ(ierr);
           ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+        }
+
+        if(user->benchmark_couette) {
+          PetscReal      norm;
+          Vec            E;
+
+          ierr = VecDuplicate(algebra->exactsolution, &E);CHKERRQ(ierr);
+          ierr = VecWAXPY(E, -1, algebra->exactsolution, algebra->solution);CHKERRQ(ierr);
+          ierr = VecNorm(E,NORM_INFINITY,&norm);CHKERRQ(ierr);
+          ierr = VecDestroy(&E);CHKERRQ(ierr);
+          ierr = PetscPrintf(PETSC_COMM_WORLD,"Final time at %f, Error: ||u_k-u|| = %g \n", user->current_time, norm);CHKERRQ(ierr);
         }
 
     user->current_step++;

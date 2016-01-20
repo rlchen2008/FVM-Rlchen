@@ -598,3 +598,60 @@ PetscReal SourceE(User user, const PetscReal *cgrad, const PetscReal *x, const P
 
   return result;
 }
+
+
+#undef __FUNCT__
+#define __FUNCT__ "KTInitialData"
+/*@C
+  the initial data for the Kurganov and Tadmor test cases.
+  refer the paper: SOLUTION OF TWO-DIMENSIONAL RIEMANN PROBLEMSOF GAS DYNAMICS BY POSITIVE SCHEMES， SISC, 1998
+@*/
+PetscErrorCode KTInitialData(User user, PetscReal *pI, PetscReal *uuI, PetscReal *vvI, PetscReal *rI)
+{
+
+  PetscFunctionBeginUser;
+
+  if       (user->KTcase==1){
+     pI[1] =  0.4;      rI[1] =  0.5197;    pI[0] = 1.0;    rI[0] = 1.0;
+    uuI[1] = -0.7259;  vvI[1] =  0.0;      uuI[0] = 0.0;   vvI[0] = 0.0;
+     pI[2] =  0.0439;   rI[2] =  0.1072;    pI[3] = 0.15;   rI[3] = 0.2579;
+    uuI[2] = -0.7259;  vvI[2] = -1.4045;   uuI[3] = 0.0;   vvI[3] = -1.4045;
+  }else if (user->KTcase==2){
+     pI[1] =  0.4;      rI[1] =  0.5197;    pI[0] = 1.0;    rI[0] = 1.0;
+    uuI[1] = -0.7259;  vvI[1] =  0.0;      uuI[0] = 0.0;   vvI[0] = 0.0;
+     pI[2] =  1;        rI[2] =  1.0;       pI[3] = 0.4;    rI[3] = 0.5197;
+    uuI[2] = -0.7259;  vvI[2] = -0.7259;   uuI[3] = 0.0;   vvI[3] = -0.7259;
+  }else if (user->KTcase==3){
+     pI[1] =  0.3;     rI[1] =  0.5323;    pI[0] =  1.5;    rI[0] = 1.5;
+    uuI[1] =  1.206;  vvI[1] =  0.0;      uuI[0] =  0.0;   vvI[0] = 0.0;
+     pI[2] =  0.029;   rI[2] =  0.138;     pI[3] =  0.3;    rI[3] = 0.5323;
+    uuI[2] =  1.206;  vvI[2] =  1.206;    uuI[3] =  0.0;   vvI[3] = 1.206;
+  }else if (user->KTcase==4){
+     pI[1] =  0.35;      rI[1] =  0.5065;         pI[0] = 1.1;      rI[0] =  1.1;
+    uuI[1] =  0.8939;   vvI[1] =  0.0;           uuI[0] = 0.0;     vvI[0] =  0.0;
+     pI[2] =  1.1;       rI[2] =  1.1;            pI[3] = 0.35;     rI[3] =  0.5065;
+    uuI[2] =  0.8939;   vvI[2] =  0.8939;        uuI[3] = 0.0;     vvI[3] =  0.8939;
+  }else if (user->KTcase==5){
+     pI[1] =  1.0;      rI[1] =  2;         pI[0] = 1.0;      rI[0] =  1.0;
+    uuI[1] = -0.75;    vvI[1] =  0.5;      uuI[0] = -0.75;   vvI[0] = -0.5;
+     pI[2] =  1.0;      rI[2] =  1.0;       pI[3] = 1.0;      rI[3] =  3.0;
+    uuI[2] =  0.75;    vvI[2] =  0.5;      uuI[3] = 0.75;    vvI[3] = -0.5;
+  }else if (user->KTcase==6){
+     pI[1] =  1.0;      rI[1] =  2;         pI[0] = 1.0;      rI[0] =  1.0;
+    uuI[1] =  0.75;    vvI[1] =  0.5;      uuI[0] = 0.75;   vvI[0] = -0.5;
+     pI[2] =  1.0;      rI[2] =  1.0;       pI[3] = 1.0;      rI[3] =  3.0;
+    uuI[2] = -0.75;    vvI[2] =  0.5;      uuI[3] =-0.75;    vvI[3] = -0.5;
+  }else if (user->KTcase==7){
+     pI[1] =  0.4;      rI[1] =  0.5197;    pI[0] = 1.0;    rI[0] = 1.0;
+    uuI[1] = -0.6259;  vvI[1] =  0.1;      uuI[0] = 0.1;   vvI[0] = 0.1;
+     pI[2] =  0.4;      rI[2] =  0.8;       pI[3] = 0.4;    rI[3] = 0.5179;
+    uuI[2] =  0.1;     vvI[2] =  0.1;      uuI[3] = 0.1;   vvI[3] = -0.6259;
+  }else if (user->KTcase==8){
+     pI[1] =  1.0;      rI[1] =  1.0;       pI[0] = 0.4;    rI[0] = 0.5197;
+    uuI[1] = -0.6259;  vvI[1] =  0.1;      uuI[0] = 0.1;   vvI[0] = 0.1;
+     pI[2] =  1.0;      rI[2] =  0.8;       pI[3] = 1.0;    rI[3] = 1.0;
+    uuI[2] =  0.1;     vvI[2] =  0.1;      uuI[3] = 0.1;   vvI[3] = -0.6259;
+  }
+
+  PetscFunctionReturn(0);
+}

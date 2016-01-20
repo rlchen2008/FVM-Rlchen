@@ -3,6 +3,7 @@
 #include <petscdmplex.h>
 #include <petscsf.h>
 #include <petscblaslapack.h>
+#include <petsctime.h>
 #include "AeroSim.h"
 
 
@@ -31,6 +32,8 @@ PetscErrorCode FormJacobian(SNES snes, Vec g, Mat jac, Mat B, void *ctx)
 
   //ierr = MatCreateSNESMF(snes,&jac);CHKERRQ(ierr);
 
+  ierr = MatZeroEntries(jac);CHKERRQ(ierr);
+
   if (user->fd_jacobian) {  /* compute the Jacobian using FD */
     //PetscPrintf(PETSC_COMM_WORLD,"Form Jacobian\n");
     ierr = SNESComputeJacobianDefault(snes, g, jac, jac, (void*) ctx);CHKERRQ(ierr);
@@ -51,8 +54,12 @@ PetscErrorCode FormJacobian(SNES snes, Vec g, Mat jac, Mat B, void *ctx)
   }else if(user->fd_jacobian_color){ /* compute the Jacobian using FD coloring */
     /* using the FD coloring to find the jacobian of the stabilizd term
        and form the analytic jacobian of the linear and nonlinear term */
+    //PetscLogDouble v1, v2;
+    //ierr = PetscTime(&v1);CHKERRQ(ierr);
     ierr = SNESComputeJacobianDefaultColor(snes, g, jac, jac, 0);CHKERRQ(ierr);
-    #if 0
+    //ierr = PetscTime(&v2);CHKERRQ(ierr);
+    //ierr =  PetscPrintf(PETSC_COMM_WORLD,"Form Jacobian takes %f s\n", v2-v1);CHKERRQ(ierr);
+    #if 1
       PetscViewer viewer;
       char filename[256];
       sprintf(filename,"matJac.m");
@@ -153,166 +160,93 @@ PetscErrorCode ComputeJacobian_Upwind(DM dm, Vec locX, PetscInt cell, PetscReal 
 {
   User              user = (User) ctx;
   Physics           phys = user->model->physics;
-  PetscInt          dof = phys->dof;
-  const PetscReal *facegeom, *cellgeom,*x;
-  PetscErrorCode    ierr;
-  DM                dmFace, dmCell;
-
   DM                dmGrad = user->dmGrad;
-  PetscInt          fStart, fEnd, face, cStart;
+  PetscErrorCode    ierr;
+  const PetscReal *facegeom, *cellgeom, *x;
+  PetscReal       *f;
+  PetscInt          fStart, fEnd, face;
+  const PetscReal   *grad;
+  PetscInt          dof = phys->dof;
+  DM                dmFace, dmCell;
+  PetscInt          i, j;
+
   Vec               locGrad, locGradLimiter, Grad;
   /*here the localGradLimiter refers to the gradient that has been multiplied by the limiter function.
    The locGradLimiter is used to construct the uL and uR, and the locGrad is used to caculate the diffusion term*/
   Vec               TempVec; /*a temperal vec for the vector restore*/
 
   PetscFunctionBeginUser;
-
-  ierr = VecGetDM(user->facegeom,&dmFace);CHKERRQ(ierr);
-  ierr = VecGetDM(user->cellgeom,&dmCell);CHKERRQ(ierr);
-
-  ierr = DMGetGlobalVector(dmGrad,&Grad);CHKERRQ(ierr);
-  ierr = VecDuplicate(Grad, &TempVec);CHKERRQ(ierr);
-  ierr = VecCopy(Grad, TempVec);CHKERRQ(ierr);
-  /*Backup the original vector and use it to restore the value of dmGrad,
-    because I do not want to change the values of the cell gradient*/
-
-  ierr = VecGetArrayRead(user->facegeom,&facegeom);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(user->cellgeom,&cellgeom);CHKERRQ(ierr);
-  ierr = VecGetArrayRead(locX,&x);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(user->facegeom, &facegeom);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(user->cellgeom, &cellgeom);CHKERRQ(ierr);
+  ierr = VecGetArrayRead(locX, &x);CHKERRQ(ierr);
   ierr = DMPlexGetHeightStratum(dm, 1, &fStart, &fEnd);CHKERRQ(ierr);
-  ierr = DMPlexGetHeightStratum(dm, 0, &cStart, NULL);CHKERRQ(ierr);
-  {
-    PetscReal *grad;
-    ierr = VecGetArray(Grad,&grad);CHKERRQ(ierr);
 
-    /* Limit interior gradients. Using cell-based loop because it generalizes better to vector limiters. */
+  if(!user->Euler){
+    ierr = DMGetGlobalVector(dmGrad, &Grad);CHKERRQ(ierr);
 
-      const PetscInt    *faces;
-      PetscInt          numFaces,f;
-      PetscReal         *cellPhi; /* Scalar limiter applied to each component separately */
-      const PetscReal *cx;
-      const CellGeom    *cg;
-      PetscReal       *cgrad;
-      PetscInt          i;
+    ierr = DMGetLocalVector(dmGrad, &locGrad);CHKERRQ(ierr);
+    ierr = DMGlobalToLocalBegin(dmGrad, Grad, INSERT_VALUES, locGrad);CHKERRQ(ierr);
+    ierr = DMGlobalToLocalEnd(dmGrad, Grad, INSERT_VALUES, locGrad);CHKERRQ(ierr);
 
-      ierr = PetscMalloc(phys->dof*sizeof(PetscReal),&cellPhi);CHKERRQ(ierr);
-
-      ierr = DMPlexGetConeSize(dm,cell,&numFaces);CHKERRQ(ierr);
-      ierr = DMPlexGetCone(dm,cell,&faces);CHKERRQ(ierr);
-      ierr = DMPlexPointLocalRead(dm,cell,x,&cx);CHKERRQ(ierr);
-      ierr = DMPlexPointLocalRead(dmCell,cell,cellgeom,&cg);CHKERRQ(ierr);
-      ierr = DMPlexPointGlobalRef(dmGrad,cell,grad,&cgrad);CHKERRQ(ierr);
-
-      /* Limiter will be minimum value over all neighbors */
-      for (i=0; i<dof; i++) {
-        cellPhi[i] = PETSC_MAX_REAL;
-      }
-      for (f=0; f<numFaces; f++) {
-        const PetscReal *ncx;
-        const CellGeom    *ncg;
-        const PetscInt    *fcells;
-        PetscInt          face = faces[f],ncell;
-        PetscReal       v[DIM];
-        PetscBool         ghost;
-        ierr = IsExteriorGhostFace(dm,face,&ghost);CHKERRQ(ierr);
-        if (ghost) continue;
-        ierr  = DMPlexGetSupport(dm,face,&fcells);CHKERRQ(ierr);
-        ncell = cell == fcells[0] ? fcells[1] : fcells[0];  /*The expression (x ? y : z) has the value of y if x is nonzero, z otherwise */
-        ierr  = DMPlexPointLocalRead(dm,ncell,x,&ncx);CHKERRQ(ierr);
-        ierr  = DMPlexPointLocalRead(dmCell,ncell,cellgeom,&ncg);CHKERRQ(ierr);
-        Waxpy2(-1, cg->centroid, ncg->centroid, v);
-        for (i=0; i<dof; i++) {
-          /* We use the symmetric slope limited form of Berger, Aftosmis, and Murman 2005 */
-          PetscReal phi,flim = 0.5 * (ncx[i] - cx[i]) / Dot2(&cgrad[i*DIM],v);
-          phi        = (*user->LimitGrad)(flim);
-          cellPhi[i] = PetscMin(cellPhi[i],phi);
-        }
-      }
-      /* Apply limiter to gradient */
-      for (i=0; i<dof; i++) Scale2(cellPhi[i],&cgrad[i*DIM],&cgrad[i*DIM]);
-
-      ierr = PetscFree(cellPhi);CHKERRQ(ierr);
-
-    ierr = VecRestoreArray(Grad,&grad);CHKERRQ(ierr);
+    ierr = DMRestoreGlobalVector(dmGrad, &Grad);CHKERRQ(ierr);
+    ierr = VecGetArrayRead(locGrad, &grad);CHKERRQ(ierr);
   }
-  ierr = DMGetLocalVector(dmGrad,&locGradLimiter);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalBegin(dmGrad,Grad,INSERT_VALUES,locGradLimiter);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(dmGrad,Grad,INSERT_VALUES,locGradLimiter);CHKERRQ(ierr);
-
-  ierr = VecCopy(TempVec, Grad);CHKERRQ(ierr);/*Restore the vector*/
-
-  ierr = DMGetLocalVector(dmGrad,&locGrad);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalBegin(dmGrad,Grad,INSERT_VALUES,locGrad);CHKERRQ(ierr);
-  ierr = DMGlobalToLocalEnd(dmGrad,Grad,INSERT_VALUES,locGrad);CHKERRQ(ierr);
-
-  ierr = DMRestoreGlobalVector(dmGrad,&Grad);CHKERRQ(ierr);
-  ierr = VecDestroy(&TempVec);CHKERRQ(ierr);
 
   {
-    const PetscReal *grad, *gradlimiter;
-    ierr = VecGetArrayRead(locGrad,&grad);CHKERRQ(ierr);
-    ierr = VecGetArrayRead(locGradLimiter,&gradlimiter);CHKERRQ(ierr);
-    for (face=fStart; face<fEnd; face++) {
-      const PetscInt    *cells;
-      PetscInt          ghost,i,j;
-      PetscReal       *fluxcon, *fluxdiff, *fx[2];
-      const FaceGeom    *fg;
-      const CellGeom    *cg[2];
-      const PetscReal *cx[2],*cgrad[2], *cgradlimiter[2];
-      PetscReal       *uL, *uR;
-      PetscReal         FaceArea;
+    const PetscInt    *cells;
+    PetscInt          i,ghost;
+    PetscReal       *fluxcon, *fluxdiff, *fL,*fR;
+    const FaceGeom    *fg;
+    const CellGeom    *cgL,*cgR;
+    const PetscReal *xL,*xR;
+    const PetscReal *cgrad[2];
+    PetscReal         FaceArea;
 
-      ierr = PetscMalloc(phys->dof * phys->dof * sizeof(PetscReal), &fluxcon);CHKERRQ(ierr); /*For the convection terms*/
-      ierr = PetscMalloc(phys->dof * phys->dof * sizeof(PetscReal), &fluxdiff);CHKERRQ(ierr); /*For the diffusion terms*/
-      ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &uL);CHKERRQ(ierr);
-      ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &uR);CHKERRQ(ierr);
+    ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &fluxcon);CHKERRQ(ierr); /*For the convection terms*/
+    ierr = PetscMalloc(phys->dof * sizeof(PetscReal), &fluxdiff);CHKERRQ(ierr); /*For the diffusion terms*/
 
-      fx[0] = uL; fx[1] = uR;
-
+    for (face = fStart; face < fEnd; ++face) {
       ierr = DMPlexGetLabelValue(dm, "ghost", face, &ghost);CHKERRQ(ierr);
       if (ghost >= 0) continue;
-      ierr = DMPlexGetSupport(dm, face, &cells);CHKERRQ(ierr);
-      ierr = DMPlexPointLocalRead(dmFace,face,facegeom,&fg);CHKERRQ(ierr);
-      for (i=0; i<2; i++) {
-        PetscReal dx[DIM];
-        ierr = DMPlexPointLocalRead(dmCell,cells[i],cellgeom,&cg[i]);CHKERRQ(ierr);
-        ierr = DMPlexPointLocalRead(dm,cells[i],x,&cx[i]);CHKERRQ(ierr);
-        ierr = DMPlexPointLocalRead(dmGrad,cells[i],gradlimiter,&cgradlimiter[i]);CHKERRQ(ierr);
-        ierr = DMPlexPointLocalRead(dmGrad,cells[i],grad,&cgrad[i]);CHKERRQ(ierr);
-        Waxpy2(-1,cg[i]->centroid,fg->centroid,dx);
-        for (j=0; j<dof; j++) {
-          fx[i][j] = cx[i][j] + Dot2(cgradlimiter[i],dx);
-        }
-        /*fx[0] and fx[1] are the value of the variables on the left and right
-          side of the face, respectively, that is u_L and u_R.*/
+      ierr = DMPlexGetSupport(dm, face, &cells);CHKERRQ(ierr);/*The support of a face is the cells (two cells)*/
+      ierr = DMPlexPointLocalRead(dmFace, face, facegeom, &fg);CHKERRQ(ierr);/*Read the data from "facegeom" for the point "face"*/
+      ierr = DMPlexPointLocalRead(dmCell, cells[0], cellgeom, &cgL);CHKERRQ(ierr);
+      ierr = DMPlexPointLocalRead(dmCell, cells[1], cellgeom, &cgR);CHKERRQ(ierr);
+
+      ierr = DMPlexPointLocalRead(dm, cells[0], x, &xL);CHKERRQ(ierr); /*For the unkown variables*/
+      ierr = DMPlexPointLocalRead(dm, cells[1], x, &xR);CHKERRQ(ierr);
+
+      if(!user->Euler){
+        ierr = DMPlexPointLocalRead(dmGrad, cells[0], grad, &cgrad[0]);CHKERRQ(ierr);
+        ierr = DMPlexPointLocalRead(dmGrad, cells[1], grad, &cgrad[1]);CHKERRQ(ierr);
       }
-
-      ierr = RiemannSolver_Rusanov_Jacobian(user, cgrad[0], cgrad[1], fg->centroid, cg[0]->centroid, cg[1]->centroid, fg->normal,
-                  fx[0], fx[1], fluxcon, fluxdiff);CHKERRQ(ierr);
-
+      ierr = RiemannSolver_Jacobian(user, cgrad[0], cgrad[1], fg->centroid, cgL->centroid, cgR->centroid, fg->normal, xL, xR, fluxcon, fluxdiff);CHKERRQ(ierr);
+    /*Caculate the flux*/
       ierr = DMPlexComputeCellGeometryFVM(dm, face, &FaceArea, NULL, NULL);CHKERRQ(ierr);
-        /*Compute the face area*/
-
+      //PetscPrintf(PETSC_COMM_SELF, "FaceArea=%f, Volume=%f\n",FaceArea,cgL->volume);
+    /*Compute the face area*/
+   // FaceArea = 0.0;
       for (i=0; i<phys->dof; i++) {
         for (j=0; j<phys->dof; j++) {
           if(cells[0]<user->cEndInterior) CellValues[cells[0]*dof*dof + i*dof + j] -= cells[0]*1.0;
           if(cells[1]<user->cEndInterior) CellValues[cells[1]*dof*dof + i*dof + j] += cells[1]*1.2;
         }
       }
-//      ierr = PetscPrintf(PETSC_COMM_WORLD,"\n");CHKERRQ(ierr);
+
+      }
+
       ierr = PetscFree(fluxcon);CHKERRQ(ierr);
       ierr = PetscFree(fluxdiff);CHKERRQ(ierr);
-      ierr = PetscFree(uL);CHKERRQ(ierr);
-      ierr = PetscFree(uR);CHKERRQ(ierr);
     }
+
+
+  if(!user->Euler){
     ierr = VecRestoreArrayRead(locGrad,&grad);CHKERRQ(ierr);
-    ierr = VecRestoreArrayRead(locGradLimiter,&gradlimiter);CHKERRQ(ierr);
+    ierr = DMRestoreLocalVector(dmGrad,&locGrad);CHKERRQ(ierr);
   }
   ierr = VecRestoreArrayRead(user->facegeom,&facegeom);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(user->cellgeom,&cellgeom);CHKERRQ(ierr);
   ierr = VecRestoreArrayRead(locX,&x);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(dmGrad,&locGradLimiter);CHKERRQ(ierr);
-  ierr = DMRestoreLocalVector(dmGrad,&locGrad);CHKERRQ(ierr);
 
   PetscFunctionReturn(0);
 }
@@ -457,7 +391,7 @@ PetscErrorCode ComputeJacobian_LS(DM dm, Vec locX, PetscInt cell, PetscReal Cell
           side of the face, respectively, that is u_L and u_R.*/
       }
 
-      ierr = RiemannSolver_Rusanov_Jacobian(user, cgrad[0], cgrad[1], fg->centroid, cg[0]->centroid, cg[1]->centroid, fg->normal,
+      ierr = RiemannSolver_Jacobian(user, cgrad[0], cgrad[1], fg->centroid, cg[0]->centroid, cg[1]->centroid, fg->normal,
                   fx[0], fx[1], fluxcon, fluxdiff);CHKERRQ(ierr);
 
       ierr = DMPlexComputeCellGeometryFVM(dm, face, &FaceArea, NULL, NULL);CHKERRQ(ierr);
@@ -491,13 +425,13 @@ PetscErrorCode ComputeJacobian_LS(DM dm, Vec locX, PetscInt cell, PetscReal Cell
 
 /* PetscReal* => Node* conversion */
 #undef __FUNCT__
-#define __FUNCT__ "RiemannSolver_Rusanov_Jacobian"
+#define __FUNCT__ "RiemannSolver_Jacobian"
 /*
 This function is for the Rusanov type Riemann solver.
 speed = \max\{|\mathbf{u}_L| + c_L,  |\mathbf{u}_R| + c_R \},
 where $c$ is the speed of the sound and $\mathbf{u}$ is the velocity.
 */
-PetscErrorCode RiemannSolver_Rusanov_Jacobian(User user, const PetscReal *cgradL, const PetscReal *cgradR,
+PetscErrorCode RiemannSolver_Jacobian(User user, const PetscReal *cgradL, const PetscReal *cgradR,
                                              const PetscReal *fgc, const PetscReal *cgcL, const
                                              PetscReal *cgcR, const PetscReal *n, const PetscReal *xL, const PetscReal *xR,
                                              PetscReal *fluxcon, PetscReal *fluxdiff)
@@ -670,23 +604,74 @@ PetscErrorCode ApplyBC(DM dm, PetscReal time, Vec locX, User user)
       ierr = DMPlexGetSupport(dm, face, &cells);CHKERRQ(ierr);
       ierr = DMPlexPointLocalRead(dm, cells[0], x, &xI);CHKERRQ(ierr);
       ierr = DMPlexPointLocalRef(dm, cells[1], x, &xG);CHKERRQ(ierr);
-      if (ids[fs]==1){
-        //PetscPrintf(PETSC_COMM_SELF, "Set Inlfow Boundary Condition! \n");
+      if (ids[fs]==1){// Set Inlfow Boundary Condition!
         ierr = BoundaryInflow(time, fg->centroid, fg->normal, xI, xG, user);CHKERRQ(ierr);
-//        DM                dmCell;
-//        const PetscReal *cellgeom;
-//        const CellGeom    *cgL, *cgR;
-//        ierr = VecGetDM(user->cellgeom,&dmCell);CHKERRQ(ierr);
-//        ierr = VecGetArrayRead(user->cellgeom, &cellgeom);CHKERRQ(ierr);
-//        ierr = DMPlexPointLocalRead(dmCell, cells[0], cellgeom, &cgL);CHKERRQ(ierr);
-//        ierr = DMPlexPointLocalRead(dmCell, cells[1], cellgeom, &cgR);CHKERRQ(ierr);
-//        ierr = PetscPrintf(PETSC_COMM_WORLD,"cells[0] = (%f, %f, %f), cells[1] = (%f, %f, %f)\n",cgL->centroid[0], cgL->centroid[1], cgL->centroid[2],cgR->centroid[0], cgR->centroid[1], cgR->centroid[2]);CHKERRQ(ierr);
-      }else if (ids[fs]==2){
-        //PetscPrintf(PETSC_COMM_SELF, "Set Outlfow Boundary Condition! \n");
+      }else if (ids[fs]==2){// Set Outlfow Boundary Condition!
         ierr = BoundaryOutflow(time, fg->centroid, fg->normal, xI, xG, user);CHKERRQ(ierr);
-      }else if (ids[fs]==3){
-        //PetscPrintf(PETSC_COMM_SELF, "Set Wall Boundary Condition! \n");
+      }else if (ids[fs]==3){// Set Wall Boundary Condition!
         ierr = BoundaryWallflow(time, fg->centroid, fg->normal, xI, xG, user);CHKERRQ(ierr);
+      }else if (ids[fs]==4 || ids[fs]==5){// Set Symmetric Boundary Condition!
+        PetscInt         fsI, fI, numFacesI;
+        IS               faceISI;
+        const PetscInt   *facesI;
+
+        if (ids[fs]==4){
+          for (fsI = 0; fsI < numFS; ++fsI) {
+            ierr = DMPlexGetStratumIS(dm, name, ids[fsI], &faceISI);CHKERRQ(ierr);
+            ierr = ISGetLocalSize(faceISI, &numFacesI);CHKERRQ(ierr);
+            ierr = ISGetIndices(faceISI, &facesI);CHKERRQ(ierr);
+            if (ids[fsI]==5){
+              for (fI = 0; fI < numFacesI; ++fI) {
+                const PetscInt    faceR = facesI[fI], *cellsR;
+                const PetscReal   *xIR; /*Inner point*/
+                const FaceGeom    *fgR;
+                PetscReal   dx, dy, dz;
+
+                ierr = DMPlexPointLocalRead(dmFace, faceR, facegeom, &fgR);CHKERRQ(ierr);
+                dx = PetscAbsScalar(fgR->centroid[0] - fg->centroid[0]);
+                dy = PetscAbsScalar(fgR->centroid[1] - fg->centroid[1]);
+                dz = PetscAbsScalar(fgR->centroid[2] - fg->centroid[2]);
+
+                if (dx<1.e-8 && dy<1.e-8){
+                  //ierr = PetscPrintf(PETSC_COMM_WORLD,"Symetric boundary condition 4 \n");CHKERRQ(ierr);
+                  ierr = DMPlexGetSupport(dm, faceR, &cellsR);CHKERRQ(ierr);
+                  ierr = DMPlexPointLocalRead(dm, cellsR[0], x, &xIR);CHKERRQ(ierr);
+                  ierr = BoundarySymmetric(time, fg->centroid, fg->normal, xIR, xG, user);CHKERRQ(ierr);
+                }
+              }
+            }
+            ierr = ISRestoreIndices(faceISI, &facesI);CHKERRQ(ierr);
+            ierr = ISDestroy(&faceISI);CHKERRQ(ierr);
+          }
+        }else if(ids[fs]==5){
+          for (fsI = 0; fsI < numFS; ++fsI) {
+            ierr = DMPlexGetStratumIS(dm, name, ids[fsI], &faceISI);CHKERRQ(ierr);
+            ierr = ISGetLocalSize(faceISI, &numFacesI);CHKERRQ(ierr);
+            ierr = ISGetIndices(faceISI, &facesI);CHKERRQ(ierr);
+            if (ids[fsI]==4){
+              for (fI = 0; fI < numFacesI; ++fI) {
+                const PetscInt    faceR = facesI[fI], *cellsR;
+                const PetscReal   *xIR; /*Inner point*/
+                const FaceGeom    *fgR;
+                PetscReal   dx, dy, dz;
+
+                ierr = DMPlexPointLocalRead(dmFace, faceR, facegeom, &fgR);CHKERRQ(ierr);
+                dx = PetscAbsScalar(fgR->centroid[0] - fg->centroid[0]);
+                dy = PetscAbsScalar(fgR->centroid[1] - fg->centroid[1]);
+                dz = PetscAbsScalar(fgR->centroid[2] - fg->centroid[2]);
+
+                if (dx<1.e-8 && dy<1.e-8){
+                  //ierr = PetscPrintf(PETSC_COMM_WORLD,"Symetric boundary condition 5 \n");CHKERRQ(ierr);
+                  ierr = DMPlexGetSupport(dm, faceR, &cellsR);CHKERRQ(ierr);
+                  ierr = DMPlexPointLocalRead(dm, cellsR[0], x, &xIR);CHKERRQ(ierr);
+                  ierr = BoundarySymmetric(time, fg->centroid, fg->normal, xIR, xG, user);CHKERRQ(ierr);
+                }
+              }
+            }
+            ierr = ISRestoreIndices(faceISI, &facesI);CHKERRQ(ierr);
+            ierr = ISDestroy(&faceISI);CHKERRQ(ierr);
+          }
+        }
       }else {
         SETERRQ(PETSC_COMM_WORLD,PETSC_ERR_SUP,"Wrong type of boundary condition setup!!! \n The set up of the boundary should be: 1 for the inflow, 2 for the outflow, and 3 for the wallflow");
       }

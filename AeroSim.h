@@ -98,6 +98,7 @@ struct _n_User {
   PetscBool      myownexplicitmethod;
   PetscBool      PressureFlux; /*Use the flux style for the pressure terms*/
   PetscBool      benchmark_couette; /*For the Couette benchmark test*/
+  PetscBool      benchmark_KT; /*For the benchmark problem test in paper [Kurganov and Tadmor 2000]*/
   PetscInt       max_time_its;
   PetscBool      Explicit_RK2; /*Use second order Runge-Kutta method*/
   PetscBool      Explicit_RK4; /*Use 4th order Runge-Kutta method*/
@@ -109,6 +110,7 @@ struct _n_User {
   PetscReal      CFL; // The Courant number coefficient
   PetscBool      orthogonal_correct; // The orthogonal correction
   PetscBool      simple_diffusion; // Using a simple diffusion version
+  PetscInt       KTcase; // the KT cases
   struct {
     PetscReal *flux;
     PetscReal *state0;
@@ -206,6 +208,8 @@ extern PetscErrorCode BoundaryOutflow(PetscReal time, const PetscReal *c, const 
                                       const PetscReal *xI, PetscReal *xG, User user);
 extern PetscErrorCode BoundaryWallflow(PetscReal time, const PetscReal *c, const PetscReal *n,
                                        const PetscReal *xI, PetscReal *xG, User user);
+extern PetscErrorCode BoundarySymmetric(PetscReal time, const PetscReal *c, const PetscReal *n,
+                                       const PetscReal *xI, PetscReal *xG, User user);
 extern PetscErrorCode SetupJacobian(DM dm, Vec X, Mat jac, Mat B, void *ctx);
 extern PetscErrorCode ComputeJacobian_LS(DM dm, Vec locX, PetscInt cell, PetscReal CellValues[], void *ctx);
 extern PetscErrorCode ComputeJacobian_Upwind(DM dm, Vec locX, PetscInt cell, PetscReal CellValues[], void *ctx);
@@ -258,3 +262,4 @@ extern PetscErrorCode ComputeExactSolution(DM dm, PetscReal time, Vec locX, User
 extern PetscErrorCode ExactSolution(PetscReal time, const PetscReal *c, PetscReal *xc, User user);
 extern PetscErrorCode ReformatSolution(Vec solution, Vec solution_unscaled, User user);
 extern PetscErrorCode SNESComputeJacobianDefaultDebug(SNES snes,Vec x1,Mat J,Mat B,void *ctx);
+extern PetscErrorCode KTInitialData(User user, PetscReal *pI, PetscReal *uuI, PetscReal *vvI, PetscReal *rI);

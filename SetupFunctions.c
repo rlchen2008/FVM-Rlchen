@@ -58,7 +58,7 @@ PetscErrorCode FormFunction(SNES snes, Vec y, Vec out, void *ctx)
     ierr = VecAXPY(out, -1.0, algebra->fn);CHKERRQ(ierr);
 
     ierr = FormTimeStepFunction(user, algebra, y, algebra->fn);CHKERRQ(ierr);
-    ierr = VecAXPY(out, user->dt, algebra->fn);CHKERRQ(ierr);
+    ierr = VecAXPY(out, -user->dt, algebra->fn);CHKERRQ(ierr);
 
   }else if(user->timestep == TIMESTEP_BDF){
     ierr = FormMassTimeStepFunction(user, algebra, y,
@@ -72,7 +72,7 @@ PetscErrorCode FormFunction(SNES snes, Vec y, Vec out, void *ctx)
     ierr = VecAXPY(out, 0.5, algebra->fn);CHKERRQ(ierr);
 
     ierr = FormTimeStepFunction(user, algebra, y, algebra->fn);CHKERRQ(ierr);
-    ierr = VecAXPY(out, user->dt, algebra->fn);CHKERRQ(ierr);
+    ierr = VecAXPY(out, -user->dt, algebra->fn);CHKERRQ(ierr);
   }else if(user->timestep == TIMESTEP_TRAPEZOIDAL){
     ierr = FormMassTimeStepFunction(user, algebra, y,
 				    algebra->fn,PETSC_TRUE);CHKERRQ(ierr);
@@ -83,7 +83,7 @@ PetscErrorCode FormFunction(SNES snes, Vec y, Vec out, void *ctx)
 
     ierr = VecAXPY(out, 0.5 * user->dt, algebra->oldfn);CHKERRQ(ierr);
     ierr = FormTimeStepFunction(user, algebra, y, algebra->fn);CHKERRQ(ierr);
-    ierr = VecAXPY(out, 0.5 * user->dt, algebra->fn);CHKERRQ(ierr);
+    ierr = VecAXPY(out, -0.5 * user->dt, algebra->fn);CHKERRQ(ierr);
 
   }
 
@@ -358,6 +358,8 @@ PetscErrorCode CaculateLocalSourceTerm(DM dm, Vec locX, Vec F, User user)
     ierr = DMPlexPointGlobalRef(dm,cell,f,&fref);CHKERRQ(ierr);
     if(!user->Euler){
       ierr = DMPlexPointLocalRead(dmGrad,cell,grad,&cgrad);CHKERRQ(ierr);
+    }else{
+      ierr = PetscMalloc(DIM*(DIM+2)*sizeof(PetscReal),&cgrad);CHKERRQ(ierr);
     }
 //    if (!fref){ PetscPrintf(PETSC_COMM_WORLD,"%d, %d\n", cell, user->cEndInterior);}
     if (fref){
@@ -366,6 +368,10 @@ PetscErrorCode CaculateLocalSourceTerm(DM dm, Vec locX, Vec F, User user)
       fref[2] += SourceV(user, cgrad, xref, cg->centroid); /*Momentum V*/
       fref[3] += SourceW(user, cgrad, xref, cg->centroid); /*Momentum W*/
       fref[4] += SourceE(user, cgrad, xref, cg->centroid);/*Energy*/
+    }
+
+    if(user->Euler){
+      ierr = PetscFree(cgrad);CHKERRQ(ierr);
     }
   }
 
@@ -1311,7 +1317,7 @@ PetscErrorCode RiemannSolver(User user, const PetscReal *cgradL, const PetscReal
 
   if (ruL->r < 0 || ruR->r < 0 || PetscAbsScalar(ruL->r)<1.e-5 ||  PetscAbsScalar(ruR->r)<1.e-5 ){
     ierr = PetscPrintf(PETSC_COMM_WORLD, "WORNING: density goes to negative or zero!!! rL = %f, rR = %f \n", ruL->r, ruR->r);CHKERRQ(ierr);
-    //SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_OUTOFRANGE,"Reconstructed density is negative or zero");
+    SETERRQ(PETSC_COMM_SELF,PETSC_ERR_ARG_OUTOFRANGE,"Reconstructed density is negative or zero");
   }
 
   ierr = ConvectionFlux(user, n, ruL, &fLcon);CHKERRQ(ierr);
@@ -1405,6 +1411,38 @@ PetscErrorCode BoundaryInflow(PetscReal time, const PetscReal *c, const PetscRea
 
   if(user->benchmark_couette){
     ierr = ExactSolution(time, c, xG, user);CHKERRQ(ierr);
+  }else if(user->benchmark_KT){
+    PetscReal p, E, uu, vv, ww, r, e;
+    PetscReal pI[4], uuI[4], vvI[4], rI[4];
+
+    ierr = KTInitialData(user, pI, uuI, vvI, rI);CHKERRQ(ierr);
+
+    if(      (c[0]>0.5)&&(c[1]>0.5)){
+      p = pI[0]; r = rI[0]; uu = uuI[0]; vv = vvI[0]; ww = 1.0;
+    }else if((c[0]<0.5)&&(c[1]>0.5)){
+      p = pI[1]; r = rI[1]; uu = uuI[1]; vv = vvI[1]; ww = 1.0;
+    }else if((c[0]<0.5)&&(c[1]<0.5)){
+      p = pI[2]; r = rI[2]; uu = uuI[2]; vv = vvI[2]; ww = 1.0;
+    }else if((c[0]>0.5)&&(c[1]<0.5)){
+      p = pI[3]; r = rI[3]; uu = uuI[3]; vv = vvI[3]; ww = 1.0;
+    }
+
+    e = p/(r*(user->adiabatic - 1));
+    E =  e + 0.5*(uu*uu + vv*vv + ww*ww);
+
+    if (user->TimeIntegralMethod == EXPLICITMETHOD) {
+      xG[0] = r; /*Density*/
+      xG[1] = r*uu; /*Velocity u (the x-direction)*/
+      xG[2] = r*vv; /*Velocity v (the y-direction)*/
+      xG[3] = r*ww; /*Velocity w (the z-direction)*/
+      xG[4] = r*E; /*Energy*/
+    }else{
+      xG[0] = r; /*Density*/
+      xG[1] = uu; /*Velocity u (the x-direction)*/
+      xG[2] = vv; /*Velocity v (the y-direction)*/
+      xG[3] = ww; /*Velocity w (the z-direction)*/
+      xG[4] = E; /*Energy*/
+    }
   }else{
     PetscReal p, M, E, u, v, w, r, e, c, T;
 
@@ -1453,6 +1491,38 @@ PetscErrorCode BoundaryOutflow(PetscReal time, const PetscReal *c, const PetscRe
 
   if(user->benchmark_couette){
     ierr = ExactSolution(time, c, xG, user);CHKERRQ(ierr);
+  }else if(user->benchmark_KT){
+    PetscReal p, E, uu, vv, ww, r, e;
+    PetscReal pI[4], uuI[4], vvI[4], rI[4];
+
+    ierr = KTInitialData(user, pI, uuI, vvI, rI);CHKERRQ(ierr);
+
+    if(      (c[0]>0.5)&&(c[1]>0.5)){
+      p = pI[0]; r = rI[0]; uu = uuI[0]; vv = vvI[0]; ww = 1.0;
+    }else if((c[0]<0.5)&&(c[1]>0.5)){
+      p = pI[1]; r = rI[1]; uu = uuI[1]; vv = vvI[1]; ww = 1.0;
+    }else if((c[0]<0.5)&&(c[1]<0.5)){
+      p = pI[2]; r = rI[2]; uu = uuI[2]; vv = vvI[2]; ww = 1.0;
+    }else if((c[0]>0.5)&&(c[1]<0.5)){
+      p = pI[3]; r = rI[3]; uu = uuI[3]; vv = vvI[3]; ww = 1.0;
+    }
+
+    e = p/(r*(user->adiabatic - 1));
+    E =  e + 0.5*(uu*uu + vv*vv + ww*ww);
+
+    if (user->TimeIntegralMethod == EXPLICITMETHOD) {
+      xG[0] = r; /*Density*/
+      xG[1] = r*uu; /*Velocity u (the x-direction)*/
+      xG[2] = r*vv; /*Velocity v (the y-direction)*/
+      xG[3] = r*ww; /*Velocity w (the z-direction)*/
+      xG[4] = r*E; /*Energy*/
+    }else{
+      xG[0] = r; /*Density*/
+      xG[1] = uu; /*Velocity u (the x-direction)*/
+      xG[2] = vv; /*Velocity v (the y-direction)*/
+      xG[3] = ww; /*Velocity w (the z-direction)*/
+      xG[4] = E; /*Energy*/
+    }
   }else{
     xG[0] = 1.0; /*Density*/
     xG[1] = 0; /*Velocity u (the x-direction)*/
@@ -1475,6 +1545,38 @@ PetscErrorCode BoundaryWallflow(PetscReal time, const PetscReal *c, const PetscR
 
   if(user->benchmark_couette){
     ierr = ExactSolution(time, c, xG, user);CHKERRQ(ierr);
+  }else if(user->benchmark_KT){
+    PetscReal p, E, uu, vv, ww, r, e;
+    PetscReal pI[4], uuI[4], vvI[4], rI[4];
+
+    ierr = KTInitialData(user, pI, uuI, vvI, rI);CHKERRQ(ierr);
+
+    if(      (c[0]>0.5)&&(c[1]>0.5)){
+      p = pI[0]; r = rI[0]; uu = uuI[0]; vv = vvI[0]; ww = 1.0;
+    }else if((c[0]<0.5)&&(c[1]>0.5)){
+      p = pI[1]; r = rI[1]; uu = uuI[1]; vv = vvI[1]; ww = 1.0;
+    }else if((c[0]<0.5)&&(c[1]<0.5)){
+      p = pI[2]; r = rI[2]; uu = uuI[2]; vv = vvI[2]; ww = 1.0;
+    }else if((c[0]>0.5)&&(c[1]<0.5)){
+      p = pI[3]; r = rI[3]; uu = uuI[3]; vv = vvI[3]; ww = 1.0;
+    }
+
+    e = p/(r*(user->adiabatic - 1));
+    E =  e + 0.5*(uu*uu + vv*vv + ww*ww);
+
+    if (user->TimeIntegralMethod == EXPLICITMETHOD) {
+      xG[0] = r; /*Density*/
+      xG[1] = r*uu; /*Velocity u (the x-direction)*/
+      xG[2] = r*vv; /*Velocity v (the y-direction)*/
+      xG[3] = r*ww; /*Velocity w (the z-direction)*/
+      xG[4] = r*E; /*Energy*/
+    }else{
+      xG[0] = r; /*Density*/
+      xG[1] = uu; /*Velocity u (the x-direction)*/
+      xG[2] = vv; /*Velocity v (the y-direction)*/
+      xG[3] = ww; /*Velocity w (the z-direction)*/
+      xG[4] = E; /*Energy*/
+    }
   }else{
     PetscReal xn[DIM],xt[DIM];
 
@@ -1513,6 +1615,21 @@ PetscErrorCode BoundaryWallflow(PetscReal time, const PetscReal *c, const PetscR
 }
 
 #undef __FUNCT__
+#define __FUNCT__ "BoundarySymmetric"
+PetscErrorCode BoundarySymmetric(PetscReal time, const PetscReal *c, const PetscReal *n, const PetscReal *xI, PetscReal *xG, User user)
+{
+  PetscFunctionBeginUser;
+
+  xG[0] = xI[0]; /*Density*/
+  xG[1] = xI[1]; /*Velocity u (the x-direction)*/
+  xG[2] = xI[2]; /*Velocity v (the y-direction)*/
+  xG[3] = xI[3]; /*Velocity w (the z-direction)*/
+  xG[4] = xI[4]; /*Energy*/
+
+  PetscFunctionReturn(0);
+}
+
+#undef __FUNCT__
 #define __FUNCT__ "InitialCondition"
 PetscErrorCode InitialCondition(PetscReal time, const PetscReal *x, PetscReal *u, User user)
 {
@@ -1531,6 +1648,39 @@ PetscErrorCode InitialCondition(PetscReal time, const PetscReal *x, PetscReal *u
     PetscErrorCode  ierr;
     ierr = ExactSolution(time, x, u, user);CHKERRQ(ierr);
     u[1] = 0;
+  }else if(user->benchmark_KT){
+    PetscReal p, M, E, uu, vv, ww, r, e, c, T;
+    PetscReal pI[4], uuI[4], vvI[4], rI[4];
+    PetscErrorCode  ierr;
+
+    ierr = KTInitialData(user, pI, uuI, vvI, rI);CHKERRQ(ierr);
+
+    if(      (x[0]>0.5)&&(x[1]>0.5)){
+      p = pI[0]; r = rI[0]; uu = uuI[0]; vv = vvI[0]; ww = 1.0;
+    }else if((x[0]<0.5)&&(x[1]>0.5)){
+      p = pI[1]; r = rI[1]; uu = uuI[1]; vv = vvI[1]; ww = 1.0;
+    }else if((x[0]<0.5)&&(x[1]<0.5)){
+      p = pI[2]; r = rI[2]; uu = uuI[2]; vv = vvI[2]; ww = 1.0;
+    }else if((x[0]>0.5)&&(x[1]<0.5)){
+      p = pI[3]; r = rI[3]; uu = uuI[3]; vv = vvI[3]; ww = 1.0;
+    }
+
+    e = p/(r*(user->adiabatic - 1));
+    E =  e + 0.5*(uu*uu + vv*vv + ww*ww);
+
+    if (user->TimeIntegralMethod == EXPLICITMETHOD) {
+      u[0] = r; /*Density*/
+      u[1] = r*uu; /*Velocity u (the x-direction)*/
+      u[2] = r*vv; /*Velocity v (the y-direction)*/
+      u[3] = r*ww; /*Velocity w (the z-direction)*/
+      u[4] = r*E; /*Energy*/
+    }else{
+      u[0] = r; /*Density*/
+      u[1] = uu; /*Velocity u (the x-direction)*/
+      u[2] = vv; /*Velocity v (the y-direction)*/
+      u[3] = ww; /*Velocity w (the z-direction)*/
+      u[4] = E; /*Energy*/
+    }
   }else{
     PetscReal p, M, E, uu, vv, ww, r, e, c, T;
 
@@ -1744,6 +1894,7 @@ PetscErrorCode  TSMonitorFunctionError(TS ts,PetscInt step,PetscReal ptime,Vec u
   Vec               func;
   PetscInt          nplot = 0;
   char              fileName[2048];
+  Algebra           algebra = user->algebra;
 
   PetscFunctionBegin;
   if (step%10==0) {
@@ -1776,6 +1927,17 @@ PetscErrorCode  TSMonitorFunctionError(TS ts,PetscInt step,PetscReal ptime,Vec u
     ierr = VecView(solution_unscaled, viewer);CHKERRQ(ierr);
     ierr = VecDestroy(&solution_unscaled);CHKERRQ(ierr);
     ierr = PetscViewerDestroy(&viewer);CHKERRQ(ierr);
+
+    if(user->benchmark_couette) {
+      PetscReal      norm;
+      Vec            E;
+
+      ierr = VecDuplicate(algebra->exactsolution, &E);CHKERRQ(ierr);
+      ierr = VecWAXPY(E, -1, algebra->exactsolution, u);CHKERRQ(ierr);
+      ierr = VecNorm(E,NORM_INFINITY,&norm);CHKERRQ(ierr);
+      ierr = VecDestroy(&E);CHKERRQ(ierr);
+      ierr = PetscPrintf(PETSC_COMM_WORLD,"Current time at %f, Error: ||u_k-u|| = %g \n", user->current_time, norm);CHKERRQ(ierr);
+    }
   }
 
   PetscFunctionReturn(0);
@@ -1792,9 +1954,9 @@ PetscErrorCode ExactSolution(PetscReal time, const PetscReal *c, PetscReal *xc, 
 
   y = c[1];
   if (y<5.0){
-    y = 0.0;
+  //  y = 0.0;
   }else{
-    y = 10.0;
+  //  y = 10.0;
   }
   U = 0.3; H = 10;
 
